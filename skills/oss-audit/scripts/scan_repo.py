@@ -462,16 +462,19 @@ def scan_package_manifests(repo_dir: Path, git_meta: dict[str, Any]) -> list[dic
                     continue
                 dep_rx = _rx(r"\b(posthog|sentry-sdk|sentry|mixpanel|amplitude|datadog|ddtrace|keyring|telemetrydeck)\b")
                 for idx, line in enumerate(lines, start=1):
-                    if dep_rx.search(line):
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        continue
+                    if dep_rx.search(stripped):
                         hits.append({
                             "rule_id": "TEL-DEPENDENCY",
-                            "category": "sensitive_access" if "keyring" in line.lower() else "telemetry",
+                            "category": "sensitive_access" if "keyring" in stripped.lower() else "telemetry",
                             "severity_hint": "MEDIUM",
                             "title": f"Telemetry or keyring dependency referenced in {fname}",
                             "file_path": rel_path,
                             "file_role": role,
                             "line": idx,
-                            "snippet": line.strip()[:240],
+                            "snippet": stripped[:240],
                             "permalink": make_permalink(git_meta["repo_url"], git_meta["commit_hash"], rel_path, idx),
                         })
     return hits
@@ -484,6 +487,30 @@ def find_key_line(raw: str, needle: str) -> int:
     return 1
 
 
+def self_dotdirs_for_repo(repo_name: str) -> set[str]:
+    """Return dot-directories owned by the repository itself to avoid false-positive cross-tool alerts."""
+    short = repo_name.rsplit("/", 1)[-1].lower()
+    mapping = {
+        "aider": {".aider"},
+        "claude": {".claude"},
+        "claude-code": {".claude"},
+        "codex": {".codex"},
+        "cursor": {".cursor"},
+        "gemini": {".gemini"},
+        "gemini-cli": {".gemini"},
+        "windsurf": {".windsurf", ".codeium"},
+        "continue": {".continue"},
+        "opencode": {".opencode"},
+        "t3code": {".t3"},
+        "t3": {".t3"},
+    }
+    owned = set(mapping.get(short, set()))
+    for key, dirs in mapping.items():
+        if short == key or short.startswith(f"{key}-") or short.endswith(f"-{key}"):
+            owned.update(dirs)
+    return owned
+
+
 def scan_files(
     repo_dir: Path,
     git_meta: dict[str, Any],
@@ -494,6 +521,7 @@ def scan_files(
     scanned_files = 0
     skipped_files = 0
     per_file_rule_counts: dict[tuple[str, str], int] = {}
+    self_dotdirs = self_dotdirs_for_repo(git_meta.get("name") or repo_dir.name)
 
     for root, dirs, files in os.walk(repo_dir):
         dirs[:] = sorted(d for d in dirs if d not in IGNORED_DIRS)
@@ -533,7 +561,11 @@ def scan_files(
                         continue
                     if rule.source_only and not is_src:
                         continue
-                    if rule.pattern.search(line):
+                    match = rule.pattern.search(line)
+                    if match:
+                        if rule.id == "SENS-AI-TOOL-CREDS" and match.lastindex and match.lastindex >= 2:
+                            if match.group(2).lower() in self_dotdirs:
+                                continue
                         key = (rel_path, rule.id)
                         count = per_file_rule_counts.get(key, 0)
                         if count >= 5:
