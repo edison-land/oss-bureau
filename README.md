@@ -1,106 +1,144 @@
-# OSS Bureau — `oss-audit` Skill
+# OSS Bureau 🔍
 
-**开源隐私、遥测与安全审计 Skill（开源仓库取证 + 本机 AI 工具自查）**
+<div align="center">
 
-> 吃瓜会过去，但信任不该靠嘴，得靠代码自证。  
-> Don't trust "zero telemetry" landing pages—verify the code and check your own machine.
+**Zero Dependencies · Evidence-First · Read-Only Local Audit · Cross-Agent Skill**
 
-`oss-audit` 是一个零外部依赖的标准 **Agent Skill**，兼容 **Antigravity / Claude Code / Codex / Cursor**。装上之后，你的 AI 编程助手可以按标准化流程帮你做两件事：
+Don't trust "zero telemetry" landing pages. Verify the code and audit your own machine.
 
-1. **挖开源仓库（Repo Audit）**：输入 GitHub 链接或本地路径，秒级初筛 + AI 逐行核实，专门查：
-   - **隐藏 / 默认开启遥测**：PostHog、Sentry、Mixpanel、Segment 及自定义上报端点，核实默认开/关、上报字段、是否故意难关闭（Dark Patterns）。
-   - **跨工具越权读取**：检查是否读取 `~/.claude`、`~/.codex`、`~/.cursor`、`~/.gemini`、`~/.ssh`、`~/.aws`、系统钥匙串、浏览器凭证或硬件指纹。
-   - **承诺 vs. 代码打假（Promise vs. Reality）**：提取 `README.md` / `PRIVACY.md` 中的零遥测/纯本地承诺，逐条对照源码精确行号与 Commit Hash。
-   - **供应链与安全红旗**：`postinstall` 钩子、`curl | sh`、动态执行/混淆载荷、关闭 TLS 校验、硬编码密钥、未鉴权 `0.0.0.0` 监听等。
-   - **标准化卷宗导出**：同时生成可读版《调查卷宗 Markdown》与通过 Schema 校验的 `case-bundle.json`（直接对接即将上线的 **OSS Bureau 开源调查局** 互动举报与证据墙网站）。
+[**English**](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-2. **查自己电脑（Local Machine Check，严格只读）**：
-   - 排查本机已安装的 AI 编程工具、CLI、IDE 及 MCP Server 清单。
-   - 检查 `DO_NOT_TRACK` 及各大工具的遥测关闭环境变量与配置文件状态。
-   - 一键生成量身定制的 `~/.zshrc` / `~/.bashrc` 关闭遥测配置片段。
-   - **隐私铁律**：纯本地、零联网、绝不读取或打印任何 API Key、Token、Cookie、SSH 私钥或聊天记录。
+[![GitHub Stars](https://img.shields.io/github/stars/edison-land/oss-bureau?style=flat&color=f97316)](https://github.com/edison-land/oss-bureau/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3b82f6?style=flat)](LICENSE)
+[![Python 3.9+ Stdlib](https://img.shields.io/badge/Runtime-Python%203.9%2B%20Stdlib-22c55e?style=flat&logo=python&logoColor=white)](skills/oss-audit/scripts)
+[![Cross-Agent Skill](https://img.shields.io/badge/Skill-Antigravity%20%7C%20Claude%20%7C%20Codex%20%7C%20Cursor-111827?style=flat)](skills/oss-audit/SKILL.md)
+[![Case Bundle v1.0.0](https://img.shields.io/badge/Schema-Case%20Bundle%20v1.0.0-6366f1?style=flat)](skills/oss-audit/references/case-schema.json)
+
+</div>
 
 ---
 
-## 快速安装 / Quick Install
+## Why OSS Bureau?
 
-### 方式一：使用 `skills` CLI（推荐，支持 Claude Code / Codex / Cursor / Antigravity）
+Modern developers install dozens of open-source AI coding tools, CLIs, editor extensions, and MCP servers every month. Occasionally, a tool that advertises **"zero telemetry"** or **"local-only"** ships default-on analytics, resists opt-out controls, or quietly inspects local credentials belonging to *other* tools (`~/.claude`, `~/.codex`, `~/.ssh`, `~/.aws`, OS keychains).
+
+**`oss-audit`** turns your AI coding assistant into a disciplined, evidence-first privacy & security auditor. Instead of relying on raw prompt guesswork, it pairs **fast, zero-dependency Python pre-scanners** with a strict **AI verification SOP**—so every finding cites exact files, line numbers, and Git commits.
+
+---
+
+## Core Capabilities
+
+| Capability | What It Does |
+| :--- | :--- |
+| **Telemetry & Dark-Pattern Detection** | Scans for PostHog, Sentry, Mixpanel, Segment, Amplitude, Scarf, custom tracking endpoints, and verifies whether collection is opt-in, opt-out, or missing `DO_NOT_TRACK` support. |
+| **Cross-Tool & Credential Snooping** | Flags reads targeting other tools' config/auth directories (`~/.claude`, `~/.codex`, `~/.cursor`, `~/.gemini`, `~/.ssh`, `~/.aws`, browser profiles, keychains, hardware fingerprints). |
+| **Promise vs. Reality Diff** | Extracts explicit privacy claims from `README.md`, `PRIVACY.md`, and docs, then compares them line-by-line against verified runtime code. |
+| **Supply-Chain & Security Red Flags** | Inspects npm lifecycle hooks (`preinstall`/`postinstall`), `curl \| sh`, dynamic `eval`/base64 execution, disabled TLS checks, hardcoded secret patterns, and `0.0.0.0` binds. |
+| **Git History Forensics** | Traces the earliest commit (`--trace-term`) that introduced suspicious telemetry or cross-tool path access, and distinguishes active issues from patched history. |
+| **Read-Only Local Machine Check** | Audits installed AI tools, telemetry opt-out env vars, editor settings, and MCP server metadata on your own computer—then generates a tailored shell opt-out snippet. |
+| **Standardized Case Bundles** | Exports both a human-readable **Audit Dossier (Markdown)** and a schema-validated `case-bundle.json` ready for the upcoming **OSS Bureau** community platform. |
+
+---
+
+## Quick Install
+
+### Option 1: `skills` CLI (Recommended)
+
+Works out of the box with Antigravity, Claude Code, Codex, Cursor, and other Agent Skills-compatible tools:
 
 ```bash
 npx skills add edison-land/oss-bureau
 ```
 
-### 方式二：手动 Clone 并软链
+### Option 2: Manual Clone & Symlink
 
 ```bash
 git clone https://github.com/edison-land/oss-bureau.git
 cd oss-bureau
 
-# Antigravity (全局)
+# Antigravity (global)
 ln -s "$(pwd)/skills/oss-audit" ~/.gemini/config/skills/oss-audit
 
-# Claude Code (全局)
+# Claude Code (global)
 ln -s "$(pwd)/skills/oss-audit" ~/.claude/skills/oss-audit
 
-# Codex / 通用 .agents 目录
+# Codex / shared .agents directory
 ln -s "$(pwd)/skills/oss-audit" ~/.agents/skills/oss-audit
 ```
 
 ---
 
-## 使用示例 / Usage Examples
+## Usage
 
-装好 Skill 后，直接用自然语言让你的 AI 助手执行：
+### 1. Ask Your AI Agent (Recommended)
 
-- **审计某个 GitHub 仓库**：
-  > 用 `oss-audit` 审计一下 `https://github.com/owner/repo`，重点查有没有默认遥测、跨工具读配置、或者和 README 承诺不一致的地方，并导出 `case-bundle.json`。
-- **追踪某段代码何时引入**：
-  > 查一下这个本地仓库里的遥测代码和 `.claude` 路径读取是什么时候哪个 commit 引入的。
-- **体检自己的电脑**：
-  > 用 `oss-audit` 查一下我这台电脑上装了哪些 AI 工具、遥测开关有没有关、MCP 列表干不干净。
+Once installed, simply prompt your AI coding agent in natural language:
 
-也可以不通过 AI，直接独立运行零依赖 Python 脚本（仅需 Python 3.9+）：
+- **Audit a GitHub repository:**
+  > Use `oss-audit` to audit `https://github.com/owner/repo`. Check for default-on telemetry, cross-tool credential reads, supply-chain hooks, and any contradiction with its README claims. Export a validated `case-bundle.json`.
+- **Trace when telemetry was introduced:**
+  > Audit this local repository and trace which Git commit first introduced `.claude` reads or telemetry endpoints.
+- **Check your own machine:**
+  > Run `oss-audit` local check on my machine to see which AI tools may have default telemetry enabled, review my MCP servers, and give me an opt-out snippet.
+
+### 2. Run Standalone Scripts Directly (Python 3.9+, Zero Dependencies)
 
 ```bash
-# 1. 静态初筛本地或远程开源仓库
+# Pre-scan a remote GitHub repo or local directory
 python3 skills/oss-audit/scripts/scan_repo.py https://github.com/owner/repo --format markdown
 
-# 2. 只读体检本机 AI 工具与遥测开关
+# Trace earliest Git commits introducing specific patterns (local repo or with --full-history)
+python3 skills/oss-audit/scripts/scan_repo.py /path/to/repo --trace-term ".claude" --trace-term "posthog" --format markdown
+
+# Strictly read-only local machine telemetry & AI tool check
 python3 skills/oss-audit/scripts/check_local.py --format markdown
 
-# 3. 校验导出的标准化案宗 JSON
+# Validate an exported OSS Bureau case bundle against v1.0.0 schema
 python3 skills/oss-audit/scripts/validate_bundle.py path/to/case-bundle.json
 ```
 
 ---
 
-## 目录结构 / Repository Layout
+## Privacy & Fair-Play Guarantees
+
+A privacy auditor must hold itself to the highest standard:
+
+- **Zero Network Calls & Strictly Read-Only Local Check**: `check_local.py` never modifies files and never makes outbound requests.
+- **Zero Secret Exposure**: It NEVER reads, prints, or transmits `.ssh/*`, `.aws/credentials`, `.env`, API keys, auth tokens, cookies, or chat histories. It inspects only tool presence, an explicit allowlist of telemetry flags, and stripped MCP metadata.
+- **No Unverified Accusations**: `SKILL.md` enforces exact file-path, line-number, and commit citations. Test fixtures, comments, dead code, and benign opt-in mechanisms are filtered out before reporting.
+- **Facts Over Drama**: Reports focus strictly on public documentation and reproducible code behavior, crediting maintainers whenever issues are remediated in newer commits.
+
+---
+
+## Repository Structure
 
 ```text
 oss-bureau/
-├── README.md
-├── LICENSE
+├── README.md                          # English documentation (default)
+├── README.zh-CN.md                    # 简体中文文档
+├── README.ja.md                       # 日本語ドキュメント
+├── LICENSE                            # MIT License
 └── skills/
     └── oss-audit/
-        ├── SKILL.md                  # AI 审计 SOP、防误报铁律、报告模板
+        ├── SKILL.md                   # Agent workflow, anti-hallucination rules & dossier template
         ├── scripts/
-        │   ├── scan_repo.py          # 零依赖开源仓库静态初筛 & Git 引入提交追踪
-        │   ├── check_local.py        # 零依赖、严格只读本机遥测与 AI 工具体检
-        │   └── validate_bundle.py    # case-bundle.json Schema 校验器
+        │   ├── scan_repo.py           # Zero-dependency repo pre-scanner & Git commit tracer
+        │   ├── check_local.py         # Strictly read-only local machine privacy check
+        │   └── validate_bundle.py     # Zero-dependency case-bundle.json validator
         └── references/
-            ├── rules.md              # 风险分级标准与误报排除清单
-            └── case-schema.json      # 标准化案宗 JSON Schema (v1.0.0)
+            ├── rules.md               # Severity rubric & false-positive exclusion checklist
+            └── case-schema.json       # OSS Bureau Case Bundle JSON Schema (v1.0.0)
 ```
 
 ---
 
-## 原则与免责 / Fair-Play Principles
-
-- **证据优先**：只基于公开源码、精确文件路径、行号与 Commit Hash 下结论，不做无依据指控。
-- **区分事实与误报**：明确区分“默认开启遥测”、“用户主动 opt-in（合规）”、“测试/示例代码”以及“已修复的历史提交”。
-- **实用导向**：不仅指出风险，同时提供可执行的关闭/缓解方案。
-
 ## Roadmap
 
-- [x] `oss-audit` Skill v1.0（仓库静态初筛 + 承诺对照 + 本机只读体检 + `case-bundle.json` Schema）
-- [ ] **OSS Bureau 互动网站（开源调查局）**：支持拖入 `case-bundle.json` 一键立案、社区复现核验、“承诺 vs 源码”对照卡导出、开发者整改销案通道。
+- [x] **`oss-audit` Skill v1.0** — Repository static pre-scanner, Promise-vs-Reality diff, Git commit tracing, read-only local machine check, and `case-bundle.json` v1.0.0 schema.
+- [ ] **OSS Bureau Interactive Platform** — Public case board where developers can drop `case-bundle.json` files to submit evidence-backed reports, peer-verify reproductions, export "Promise vs. Code" comparison cards, and track official maintainer fixes.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
