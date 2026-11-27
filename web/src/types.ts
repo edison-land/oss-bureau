@@ -34,6 +34,20 @@ export interface TierRuleHit {
   en: string;
 }
 
+export interface CaseAttachment {
+  path: string;
+  caption?: string;
+  sourceUrl?: string;
+  previewDataUrl?: string;
+}
+
+export interface PreflightCheck {
+  id: string;
+  label: LocalizedText;
+  status: "pass" | "fail" | "warn";
+  detail?: LocalizedText;
+}
+
 export interface CaseFinding {
   id: string;
   category: "telemetry" | "sensitive_access" | "promise_mismatch" | "supply_chain" | "security";
@@ -76,6 +90,7 @@ export interface CaseDossier {
   evidenceIssueNumber?: number;
   evidenceIssueUrl?: string;
   sourceType?: "official" | "community" | "local";
+  attachments?: CaseAttachment[];
   rawBundleJson?: string;
 }
 
@@ -89,6 +104,7 @@ export interface BureauMeta {
   evidence_issue_number?: number;
   evidence_issue_url?: string;
   source_type?: "official" | "community";
+  attachments?: CaseAttachment[];
   archived_at?: string;
 }
 
@@ -160,6 +176,7 @@ export interface CommunityIssueRecord {
   targetRepo: string;
   auditorTool?: string | null;
   summary: string;
+  attachmentsCount?: number;
   bundle?: RawCaseBundleV1 | null;
 }
 

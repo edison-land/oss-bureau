@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """
-OSS Bureau GitHub Intake, Verification & Sync Bot (Python 3.9+, zero dependencies).
+OSS Bureau GitHub Intake, Verification, Attachment Archiving & AX Sync Bot
+(Python 3.9+, zero external dependencies).
 
 Subcommands:
   inspect-issue   Validate a GitHub Issue body containing case-bundle.json,
-                  verify remote GitHub repo/commit/file paths, and classify tier.
-  inspect-pr      Validate one or more cases/*.json files in a PR (or --all).
-  archive-issue   Convert an approved Issue's case-bundle.json into cases/*.json.
+                  block shortlinks & leaked secrets, verify remote GitHub
+                  repo/commit/file paths & snippet lines, detect image
+                  attachments, and classify tier.
+  inspect-pr      Validate cases/*.json files (or --all) plus 100% evidence/
+                  attachment accounting, shortlink & secret hygiene checks.
+  archive-issue   Archive an approved Issue's case-bundle.json into cases/
+                  and download validated Issue image attachments into evidence/.
   sync-issues     Sync open `case-submission` / `case-tip` GitHub Issues into
-                  web/src/data/communityIssues.json for zero-rate-limit display.
+                  web/src/data/communityIssues.json.
+  export-ax       Export static AX endpoints (llms.txt, registry.json, schema)
+                  and copy evidence/ assets into web/public/.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
@@ -34,20 +42,53 @@ from validate_bundle import validate as validate_v1_bundle  # noqa: E402
 
 
 TIER_META = {
-    "blacklist": {"emoji": "🔴", "zh": "黑榜", "en": "BLACKLIST", "label": "tier:blacklist"},
-    "watchlist": {"emoji": "🟡", "zh": "灰榜", "en": "WATCHLIST", "label": "tier:watchlist"},
-    "cleared": {"emoji": "🟢", "zh": "红榜", "en": "CLEARED", "label": "tier:cleared"},
+    "blacklist": {"emoji": "🔴", "zh": "黑榜", "en": "Flagged", "label": "tier:blacklist"},
+    "watchlist": {"emoji": "🟡", "zh": "灰榜", "en": "Watch", "label": "tier:watchlist"},
+    "cleared": {"emoji": "🟢", "zh": "红榜", "en": "Clean", "label": "tier:cleared"},
 }
+
+SHORTLINK_RE = re.compile(
+    r"\bhttps?://(?:t\.co|bit\.ly|tinyurl\.com|goo\.gl|ow\.ly|is\.gd|rb\.gy|buff\.ly)/\S+",
+    re.IGNORECASE,
+)
+
+SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("GitHub classic token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b")),
+    ("GitHub fine-grained token", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b")),
+    ("AWS access key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("Private key block", re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")),
+    ("Slack token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
+    ("OpenAI/Anthropic style key", re.compile(r"\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}\b")),
+]
+
+ALLOWED_IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_IMG_CONTENT_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+}
+MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024  # 5 MB
+
+MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\((https://[^)\s]+)\)")
+HTML_IMG_RE = re.compile(r"""<img[^>]+src=["'](https://[^"'\s]+)["'][^>]*>""", re.IGNORECASE)
+ALLOWED_ISSUE_ATTACHMENT_HOSTS = (
+    "github.com",
+    "user-images.githubusercontent.com",
+    "raw.githubusercontent.com",
+    "private-user-images.githubusercontent.com",
+)
 
 
 def github_api_request(
     url: str,
     token: str | None = None,
     timeout: int = 12,
+    raw_text: bool = False,
 ) -> tuple[int, Any]:
     headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "oss-bureau-bot/1.0",
+        "Accept": "application/vnd.github.raw+json" if raw_text else "application/vnd.github+json",
+        "User-Agent": "oss-bureau-bot/1.1",
         "X-GitHub-Api-Version": "2022-11-28",
     }
     if token:
@@ -56,6 +97,8 @@ def github_api_request(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
+            if raw_text:
+                return resp.status, raw
             return resp.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as exc:
         try:
@@ -77,12 +120,43 @@ def parse_github_owner_repo(repo_url: str | None, name: str | None) -> str | Non
     return None
 
 
+def find_shortlinks(text: str) -> list[str]:
+    return sorted(set(SHORTLINK_RE.findall(text or "")))
+
+
+def find_leaked_secrets(text: str) -> list[str]:
+    hits: list[str] = []
+    if not text:
+        return hits
+    for label, pattern in SECRET_PATTERNS:
+        if pattern.search(text):
+            hits.append(label)
+    return hits
+
+
+def extract_issue_images(body: str) -> list[dict[str, str]]:
+    """Extract canonical HTTPS image attachments uploaded to a GitHub Issue."""
+    found: list[dict[str, str]] = []
+    seen: set[str] = set()
+    if not body:
+        return found
+
+    for alt, url in MD_IMAGE_RE.findall(body):
+        if url not in seen:
+            seen.add(url)
+            found.append({"url": url, "caption": alt.strip() or "Evidence screenshot"})
+    for url in HTML_IMG_RE.findall(body):
+        if url not in seen:
+            seen.add(url)
+            found.append({"url": url, "caption": "Evidence screenshot"})
+    return found
+
+
 def extract_json_from_text(text: str) -> tuple[dict[str, Any] | None, str | None]:
     """Extract the first JSON object from fenced code blocks or raw text."""
     if not text or not text.strip():
         return None, "Issue body is empty."
 
-    # 1. Try fenced ```json ... ``` blocks first
     for pattern in (
         r"```json\s*(\{.*?\})\s*```",
         r"```[a-zA-Z0-9_-]*\s*(\{.*?\})\s*```",
@@ -96,7 +170,6 @@ def extract_json_from_text(text: str) -> tuple[dict[str, Any] | None, str | None
             except json.JSONDecodeError:
                 continue
 
-    # 2. Fallback: find balanced JSON object containing "schema_version"
     idx = text.find("{")
     while idx != -1:
         depth = 0
@@ -134,10 +207,7 @@ def extract_json_from_text(text: str) -> tuple[dict[str, Any] | None, str | None
 
 
 def evaluate_tier(bundle: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
-    """
-    Canonical public OSS Bureau tier classifier (mirrors web/src/utils/bundleParser.ts).
-    Returns (tier, reasons).
-    """
+    """Canonical public OSS Bureau tier classifier (mirrors web/src/utils/bundleParser.ts)."""
     verdict = bundle.get("verdict") or {}
     risk = verdict.get("risk_level", "UNKNOWN")
     promise = verdict.get("promise_vs_reality", "NO_CLAIM_FOUND")
@@ -225,6 +295,22 @@ def evaluate_tier(bundle: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
     ]
 
 
+def snippet_matches_source(snippet: str, raw_source: str) -> bool | None:
+    """Check whether at least one meaningful line of code_snippet appears in the remote file."""
+    candidates = [
+        line.strip()
+        for line in (snippet or "").splitlines()
+        if len(line.strip()) >= 12 and not line.strip().startswith(("//", "#", "/*", "*"))
+    ]
+    if not candidates:
+        return None
+    normalized_src = " ".join(raw_source.split())
+    for line in candidates[:3]:
+        if line in raw_source or " ".join(line.split()) in normalized_src:
+            return True
+    return False
+
+
 def verify_remote_evidence(
     bundle: dict[str, Any],
     token: str | None = None,
@@ -285,25 +371,41 @@ def verify_remote_evidence(
         else:
             result["warnings"].append(f"Could not verify commit `{commit_hash}` (HTTP {c_status}).")
 
-    checked_paths: set[str] = set()
+    checked_paths: dict[str, tuple[int, str]] = {}
     for f in findings[:8]:
         if not isinstance(f, dict):
             continue
         fp = str(f.get("file_path") or "").strip().lstrip("/")
-        if not fp or fp in checked_paths:
+        if not fp:
             continue
-        checked_paths.add(fp)
-        quoted_path = urllib.parse.quote(fp, safe="/")
-        quoted_ref = urllib.parse.quote(str(ref))
-        f_status, _ = github_api_request(
-            f"https://api.github.com/repos/{owner_repo}/contents/{quoted_path}?ref={quoted_ref}",
-            token,
-        )
+        if fp not in checked_paths:
+            quoted_path = urllib.parse.quote(fp, safe="/")
+            quoted_ref = urllib.parse.quote(str(ref))
+            f_status, raw_body = github_api_request(
+                f"https://api.github.com/repos/{owner_repo}/contents/{quoted_path}?ref={quoted_ref}",
+                token,
+                raw_text=True,
+            )
+            checked_paths[fp] = (f_status, raw_body if isinstance(raw_body, str) else "")
+
+        f_status, raw_body = checked_paths[fp]
         exists = f_status == 200
-        result["file_checks"].append({"file_path": fp, "exists": exists, "status": f_status})
+        snip_match = snippet_matches_source(str(f.get("code_snippet") or ""), raw_body) if exists else None
+        result["file_checks"].append(
+            {
+                "file_path": fp,
+                "exists": exists,
+                "status": f_status,
+                "snippet_matched": snip_match,
+            }
+        )
         if f_status == 404:
             result["warnings"].append(
                 f"Referenced file `{fp}` not found at ref `{ref}` (may have been removed in a later commit)."
+            )
+        elif snip_match is False:
+            result["warnings"].append(
+                f"Snippet in `{fp}` did not verbatim-match remote file content (please verify line excerpt)."
             )
 
     return result
@@ -313,22 +415,25 @@ def build_issue_comment(
     bundle: dict[str, Any] | None,
     schema_errors: list[str],
     schema_warnings: list[str],
+    hygiene_errors: list[str],
     remote: dict[str, Any] | None,
     tier: str | None,
     reasons: list[dict[str, str]],
+    images: list[dict[str, str]],
 ) -> tuple[str, list[str]]:
     """Build Markdown triage comment and desired bot labels."""
-    lines = ["<!-- oss-bureau-bot -->", "### 🔍 OSS Bureau Automated Intake Report", ""]
+    lines = ["<!-- oss-bureau-bot -->", "### OSS Bureau Automated Verification Report", ""]
 
-    if bundle is None or schema_errors:
-        lines.append("❌ **Schema Validation Failed** — 请修正以下字段后编辑本 Issue，Bot 会自动重新校验：")
+    blocking = list(hygiene_errors) + list(schema_errors)
+    if bundle is None or blocking:
+        lines.append("❌ **Checks Failed** — please fix the blocking items below and edit this Issue to re-run:")
         lines.append("")
-        for err in schema_errors:
+        for err in blocking:
             lines.append(f"- `{err}`")
         lines.extend(
             [
                 "",
-                "📖 Reference: [`case-schema.json`](https://github.com/edison-land/oss-bureau/blob/main/skills/oss-audit/references/case-schema.json)",
+                "Reference: [`case-schema.json`](https://github.com/edison-land/oss-bureau/blob/main/skills/oss-audit/references/case-schema.json)",
             ]
         )
         return "\n".join(lines), ["evidence:needs-fix"]
@@ -345,7 +450,14 @@ def build_issue_comment(
 
     lines.extend(
         [
-            f"**Computed Tier (公开规则自动定级)**: {meta['emoji']} **{meta['zh']} / {meta['en']}**",
+            f"**Computed Tier**: {meta['emoji']} **{meta['en']} / {meta['zh']}**",
+            "",
+            "| Check | Status |",
+            "| :--- | :--- |",
+            "| Schema `v1.0.0` | ✅ Valid |",
+            "| Canonical URLs (zero shortlinks) | ✅ Pass |",
+            "| Secret hygiene scan | ✅ Clean |",
+            f"| Image attachments detected | `{len(images)}` (auto-archived to `evidence/` on approval) |",
             "",
             "| Field | Value |",
             "| :--- | :--- |",
@@ -355,16 +467,16 @@ def build_issue_comment(
             f"| **Default Telemetry** | `{verdict.get('default_telemetry')}` |",
             f"| **Cross-Tool Access** | `{'YES' if verdict.get('cross_tool_access') else 'NO'}` |",
             f"| **Promise vs. Code** | `{verdict.get('promise_vs_reality')}` |",
-            f"| **Findings Count** | `{len(bundle.get('findings') or [])}` |",
+            f"| **Findings** | `{len(bundle.get('findings') or [])}` |",
             "",
-            "#### ⚖️ Public Rule Engine Reasoning",
+            "#### Rule Engine Reasoning",
         ]
     )
     for r in reasons:
-        lines.append(f"- **`{r['rule']}`**: {r['zh']} / {r['en']}")
+        lines.append(f"- **`{r['rule']}`**: {r['en']} / {r['zh']}")
 
     if remote and not remote.get("skipped"):
-        lines.extend(["", "#### 🛰️ Remote GitHub Evidence Verification"])
+        lines.extend(["", "#### Remote GitHub Source Verification"])
         lines.append(
             f"- Repository `{remote.get('owner_repo')}`: "
             + ("✅ Found" if remote.get("repo_exists") else "❌ Not Found")
@@ -377,7 +489,14 @@ def build_issue_comment(
             )
         for fc in remote.get("file_checks") or []:
             icon = "✅" if fc["exists"] else "⚠️"
-            lines.append(f"- File `{fc['file_path']}`: {icon} (HTTP {fc['status']})")
+            snip_note = (
+                " · snippet matched"
+                if fc.get("snippet_matched") is True
+                else " · snippet unverified"
+                if fc.get("snippet_matched") is False
+                else ""
+            )
+            lines.append(f"- File `{fc['file_path']}`: {icon} (HTTP {fc['status']}){snip_note}")
 
     if remote_errors:
         lines.extend(["", "#### ❌ Blocking Verification Errors"])
@@ -393,13 +512,12 @@ def build_issue_comment(
     lines.append("")
     if verified_ok:
         lines.append(
-            "> ✅ **Ready for Peer Review**: Community members and maintainers can discuss or post follow-up evidence below. "
-            "Maintainers can add the **`approved`** label to automatically open an archive PR into `cases/`."
+            "> ✅ **Ready for Peer Review**: Maintainers can add the **`approved`** label to automatically archive the JSON into `cases/` and any uploaded screenshots into `evidence/` via pull request."
         )
         labels = [meta["label"], "evidence:verified"]
     else:
         lines.append(
-            "> ❌ **Needs Fix**: Please fix the blocking verification errors above and edit this Issue to re-trigger validation."
+            "> ❌ **Needs Fix**: Fix the blocking errors above and edit this Issue to re-run verification."
         )
         labels = [meta["label"], "evidence:needs-fix"]
 
@@ -416,20 +534,54 @@ def cmd_inspect_issue(args: argparse.Namespace) -> int:
     else:
         body = sys.stdin.read()
 
+    hygiene_errors: list[str] = []
+    shortlinks = find_shortlinks(body)
+    if shortlinks:
+        hygiene_errors.append(
+            f"Shortened redirect URLs are prohibited (use canonical https:// URLs): {', '.join(shortlinks[:3])}"
+        )
+    leaked = find_leaked_secrets(body)
+    if leaked:
+        hygiene_errors.append(
+            f"Potential secret/token detected ({', '.join(leaked)}). Redact before submitting."
+        )
+
+    images = extract_issue_images(body)
     bundle, extract_err = extract_json_from_text(body)
+
     if bundle is None:
-        comment, labels = build_issue_comment(None, [extract_err or "Missing JSON"], [], None, None, [])
-        report = {"ok": False, "tier": None, "labels": labels, "comment": comment}
+        comment, labels = build_issue_comment(
+            None, [extract_err or "Missing JSON"], [], hygiene_errors, None, None, [], images
+        )
+        report = {
+            "ok": False,
+            "tier": None,
+            "labels": labels,
+            "comment": comment,
+            "hygiene_errors": hygiene_errors,
+            "attachments_detected": len(images),
+        }
     else:
         errors, warnings = validate_v1_bundle(bundle)
-        if errors:
-            comment, labels = build_issue_comment(bundle, errors, warnings, None, None, [])
-            report = {"ok": False, "tier": None, "labels": labels, "comment": comment}
+        if errors or hygiene_errors:
+            comment, labels = build_issue_comment(
+                bundle, errors, warnings, hygiene_errors, None, None, [], images
+            )
+            report = {
+                "ok": False,
+                "tier": None,
+                "labels": labels,
+                "comment": comment,
+                "hygiene_errors": hygiene_errors,
+                "attachments_detected": len(images),
+            }
         else:
             tier, reasons = evaluate_tier(bundle)
             token = os.environ.get("GITHUB_TOKEN")
             remote = verify_remote_evidence(bundle, token=token, skip_network=args.no_network)
-            comment, labels = build_issue_comment(bundle, [], warnings, remote, tier, reasons)
+            comment, labels = build_issue_comment(
+                bundle, [], warnings, [], remote, tier, reasons, images
+            )
             ok = len(remote.get("errors") or []) == 0
             report = {
                 "ok": ok,
@@ -438,6 +590,7 @@ def cmd_inspect_issue(args: argparse.Namespace) -> int:
                 "comment": comment,
                 "target": bundle["target"]["name"],
                 "auditor_tool": bundle.get("auditor_tool"),
+                "attachments_detected": len(images),
             }
 
     if args.out_json:
@@ -455,41 +608,99 @@ def validate_official_dossier(data: dict[str, Any]) -> list[str]:
     return errs
 
 
+def collect_case_attachments(data: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    raw_list = data.get("attachments") or (data.get("bureau_meta") or {}).get("attachments") or []
+    if isinstance(raw_list, list):
+        for item in raw_list:
+            if isinstance(item, dict) and isinstance(item.get("path"), str):
+                paths.append(item["path"].lstrip("/"))
+            elif isinstance(item, str):
+                paths.append(item.lstrip("/"))
+    return paths
+
+
+def verify_evidence_accounting(all_case_paths: list[Path]) -> list[str]:
+    """100% evidence/ attachment accounting (no missing files, no invalid formats, no orphan images)."""
+    errors: list[str] = []
+    evidence_dir = REPO_ROOT / "evidence"
+    referenced: set[str] = set()
+
+    for cp in all_case_paths:
+        try:
+            data = json.loads(cp.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for rel in collect_case_attachments(data):
+            if not rel.startswith("evidence/"):
+                errors.append(f"`{cp.name}` references attachment outside `evidence/`: `{rel}`")
+                continue
+            full = REPO_ROOT / rel
+            referenced.add(rel)
+            if not full.exists() or not full.is_file():
+                errors.append(f"`{cp.name}` references missing attachment: `{rel}`")
+            else:
+                if full.suffix.lower() not in ALLOWED_IMG_EXTS:
+                    errors.append(f"Unsupported attachment extension for `{rel}` (allowed: {sorted(ALLOWED_IMG_EXTS)})")
+                if full.stat().st_size > MAX_ATTACHMENT_BYTES:
+                    errors.append(f"Attachment `{rel}` exceeds 5 MB limit ({full.stat().st_size} bytes)")
+
+    if evidence_dir.exists():
+        for file_path in sorted(evidence_dir.rglob("*")):
+            if not file_path.is_file() or file_path.name in {"README.md", ".gitkeep", ".DS_Store"}:
+                continue
+            rel = str(file_path.relative_to(REPO_ROOT)).replace("\\", "/")
+            if file_path.suffix.lower() not in ALLOWED_IMG_EXTS:
+                errors.append(f"Disallowed file type in `evidence/`: `{rel}`")
+            if file_path.stat().st_size > MAX_ATTACHMENT_BYTES:
+                errors.append(f"Attachment `{rel}` exceeds 5 MB limit")
+            if rel not in referenced:
+                errors.append(f"Unreferenced orphan file in `evidence/`: `{rel}`")
+
+    return errors
+
+
 def cmd_inspect_pr(args: argparse.Namespace) -> int:
-    paths: list[Path] = []
+    all_cases = sorted((REPO_ROOT / "cases").glob("*.json"))
     if args.all:
-        paths = sorted((REPO_ROOT / "cases").glob("*.json"))
+        paths = all_cases
     else:
         paths = [Path(p) for p in args.files if p.endswith(".json") and Path(p).exists()]
 
-    if not paths:
-        print("No cases/*.json files to inspect.")
-        return 0
-
     token = os.environ.get("GITHUB_TOKEN")
     has_failure = False
-    md_lines = ["<!-- oss-bureau-pr-bot -->", "### 🔍 OSS Bureau Case PR Verification", ""]
-    md_lines.append("| File | Format | Target | Tier | Schema | Remote Check |")
+    md_lines = ["<!-- oss-bureau-pr-bot -->", "### OSS Bureau Case & Evidence Verification", ""]
+    md_lines.append("| File | Format | Target | Tier | Schema & Hygiene | Remote Check |")
     md_lines.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
 
     for p in paths:
         rel = str(p.relative_to(REPO_ROOT)) if p.is_absolute() and REPO_ROOT in p.parents else str(p)
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
+            raw_text = p.read_text(encoding="utf-8")
+            data = json.loads(raw_text)
         except Exception as exc:
             has_failure = True
             md_lines.append(f"| `{rel}` | invalid | - | - | ❌ JSON error: {exc} | - |")
             continue
 
+        shortlinks = find_shortlinks(raw_text)
+        secrets = find_leaked_secrets(raw_text)
+        hygiene_errs: list[str] = []
+        if shortlinks:
+            hygiene_errs.append(f"shortlink ({shortlinks[0]})")
+        if secrets:
+            hygiene_errs.append(f"secret ({secrets[0]})")
+
         if isinstance(data, dict) and "schema_version" in data:
             errs, warns = validate_v1_bundle(data)
-            if errs:
+            all_errs = errs + hygiene_errs
+            if all_errs:
                 has_failure = True
                 md_lines.append(
-                    f"| `{rel}` | `v1.0.0` | `{data.get('target', {}).get('name', '?')}` | - | ❌ {len(errs)} error(s) | skipped |"
+                    f"| `{rel}` | `v1.0.0` | `{data.get('target', {}).get('name', '?')}` | - | ❌ {'; '.join(all_errs[:2])} | skipped |"
                 )
-                for e in errs:
-                    md_lines.append(f"\n> ❌ `{rel}`: {e}")
                 continue
             tier, _ = evaluate_tier(data)
             meta = TIER_META[tier]
@@ -499,7 +710,7 @@ def cmd_inspect_pr(args: argparse.Namespace) -> int:
                 has_failure = True
                 r_cell = "❌ " + "; ".join(r_errs)
             elif remote.get("skipped"):
-                r_cell = "⏭️ skipped"
+                r_cell = "skipped"
             else:
                 r_cell = "✅ verified"
             warn_note = f" ({len(warns)} warn)" if warns else ""
@@ -507,7 +718,7 @@ def cmd_inspect_pr(args: argparse.Namespace) -> int:
                 f"| `{rel}` | `v1.0.0` | `{data['target']['name']}` | {meta['emoji']} {meta['en']} | ✅ valid{warn_note} | {r_cell} |"
             )
         elif isinstance(data, dict) and "caseId" in data:
-            errs = validate_official_dossier(data)
+            errs = validate_official_dossier(data) + hygiene_errs
             if errs:
                 has_failure = True
                 md_lines.append(f"| `{rel}` | official | `{data.get('name', '?')}` | - | ❌ {'; '.join(errs)} | - |")
@@ -520,11 +731,77 @@ def cmd_inspect_pr(args: argparse.Namespace) -> int:
             has_failure = True
             md_lines.append(f"| `{rel}` | unknown | - | - | ❌ Unrecognized case JSON format | - |")
 
+    ev_errors = verify_evidence_accounting(all_cases)
+    if ev_errors:
+        has_failure = True
+        md_lines.extend(["", "#### ❌ Evidence Attachment Accounting Errors"])
+        for e in ev_errors:
+            md_lines.append(f"- {e}")
+    else:
+        md_lines.extend(["", "✅ **Evidence attachment accounting**: 0 missing files, 0 orphan files, 0 shortlinks, 0 secrets."])
+
     summary = "\n".join(md_lines) + "\n"
     if args.out_md:
         Path(args.out_md).write_text(summary, encoding="utf-8")
     print(summary)
     return 1 if has_failure else 0
+
+
+def download_issue_attachments(
+    images: list[dict[str, str]],
+    case_id: str,
+    token: str | None,
+) -> list[dict[str, str]]:
+    """Download validated image attachments from an approved Issue into evidence/<case_id>/."""
+    archived_attachments: list[dict[str, str]] = []
+    if not images:
+        return archived_attachments
+
+    dest_dir = REPO_ROOT / "evidence" / case_id
+    for idx, img in enumerate(images[:8], start=1):
+        url = img["url"]
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme != "https" or not any(
+            parsed.netloc == host or parsed.netloc.endswith(f".{host}")
+            for host in ALLOWED_ISSUE_ATTACHMENT_HOSTS
+        ):
+            print(f"WARN: Skipping non-GitHub attachment host: {url}", file=sys.stderr)
+            continue
+
+        headers = {"User-Agent": "oss-bureau-bot/1.1"}
+        if token and "github" in parsed.netloc:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                ext = ALLOWED_IMG_CONTENT_TYPES.get(ctype)
+                if not ext:
+                    url_ext = Path(parsed.path).suffix.lower()
+                    ext = url_ext if url_ext in ALLOWED_IMG_EXTS else None
+                if not ext:
+                    print(f"WARN: Skipping unsupported attachment content-type '{ctype}' ({url})", file=sys.stderr)
+                    continue
+                payload = resp.read(MAX_ATTACHMENT_BYTES + 1)
+                if len(payload) > MAX_ATTACHMENT_BYTES or len(payload) == 0:
+                    print(f"WARN: Skipping oversized/empty attachment ({len(payload)} bytes)", file=sys.stderr)
+                    continue
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                filename = f"{idx:02d}{ext}"
+                out_file = dest_dir / filename
+                out_file.write_bytes(payload)
+                rel_path = f"evidence/{case_id}/{filename}"
+                archived_attachments.append(
+                    {
+                        "path": rel_path,
+                        "caption": img.get("caption") or f"Receipt {idx}",
+                        "sourceUrl": url,
+                    }
+                )
+        except Exception as exc:
+            print(f"WARN: Failed to archive attachment {url}: {exc}", file=sys.stderr)
+
+    return archived_attachments
 
 
 def cmd_archive_issue(args: argparse.Namespace) -> int:
@@ -534,6 +811,10 @@ def cmd_archive_issue(args: argparse.Namespace) -> int:
     issue_url = issue.get("html_url")
     submitted_by = (issue.get("user") or {}).get("login", "community")
     body = issue.get("body") or ""
+
+    if find_shortlinks(body) or find_leaked_secrets(body):
+        print("ERROR: Hygiene check failed (shortlinks or secrets present).", file=sys.stderr)
+        return 1
 
     bundle, extract_err = extract_json_from_text(body)
     if bundle is None:
@@ -558,6 +839,11 @@ def cmd_archive_issue(args: argparse.Namespace) -> int:
     filename = f"CASE-ISS-{issue_number}-{slug}.json"
     out_path = REPO_ROOT / "cases" / filename
 
+    images = extract_issue_images(body)
+    archived_attachments = (
+        [] if args.no_network else download_issue_attachments(images, case_id, token)
+    )
+
     archived = dict(bundle)
     archived["case_id"] = case_id
     archived["bureau_meta"] = {
@@ -569,6 +855,7 @@ def cmd_archive_issue(args: argparse.Namespace) -> int:
         "evidence_issue_number": issue_number,
         "evidence_issue_url": issue_url,
         "source_type": "community",
+        "attachments": archived_attachments,
         "archived_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
@@ -576,11 +863,13 @@ def cmd_archive_issue(args: argparse.Namespace) -> int:
     out_path.write_text(json.dumps(archived, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     rel_path = f"cases/{filename}"
-    print(f"Archived {target_name} -> {rel_path} (tier={tier})")
+    print(f"Archived {target_name} -> {rel_path} (tier={tier}, attachments={len(archived_attachments)})")
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
         with open(gh_out, "a", encoding="utf-8") as fh:
             fh.write(f"file_path={rel_path}\n")
+            fh.write(f"evidence_dir=evidence/{case_id}\n")
+            fh.write(f"attachments_count={len(archived_attachments)}\n")
             fh.write(f"target_name={target_name}\n")
             fh.write(f"tier={tier}\n")
             fh.write(f"case_id={case_id}\n")
@@ -652,6 +941,7 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
                 else (body.strip().splitlines()[0][:200] if body.strip() else item.get("title", ""))
             )
             reactions = item.get("reactions") or {}
+            images = extract_issue_images(body)
 
             records_by_num[num] = {
                 "number": num,
@@ -670,6 +960,7 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
                 "targetRepo": target_repo,
                 "auditorTool": auditor_tool,
                 "summary": summary,
+                "attachmentsCount": len(images),
                 "bundle": valid_bundle,
             }
 
@@ -687,7 +978,7 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
 
 
 def cmd_export_ax(args: argparse.Namespace) -> int:
-    """Export machine-readable static AX endpoints into web/public/."""
+    """Export machine-readable static AX endpoints and copy evidence/ images into web/public/."""
     public_dir = Path(args.out_dir)
     schema_out = public_dir / "schema" / "case-bundle.v1.json"
     registry_out = public_dir / "registry.json"
@@ -699,6 +990,19 @@ def cmd_export_ax(args: argparse.Namespace) -> int:
     schema_src = REPO_ROOT / "skills" / "oss-audit" / "references" / "case-schema.json"
     if schema_src.exists():
         schema_out.write_text(schema_src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    # Sync evidence/ images into web/public/evidence/
+    src_evidence = REPO_ROOT / "evidence"
+    dst_evidence = public_dir / "evidence"
+    if dst_evidence.exists():
+        shutil.rmtree(dst_evidence)
+    if src_evidence.exists():
+        for file_path in src_evidence.rglob("*"):
+            if file_path.is_file() and file_path.suffix.lower() in ALLOWED_IMG_EXTS:
+                rel = file_path.relative_to(src_evidence)
+                target = dst_evidence / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(file_path, target)
 
     cases_list: list[dict[str, Any]] = []
     for p in sorted((REPO_ROOT / "cases").glob("*.json")):
@@ -725,6 +1029,7 @@ def cmd_export_ax(args: argparse.Namespace) -> int:
                     "summary": data["verdict"]["one_liner"],
                     "auditorTool": data.get("auditor_tool"),
                     "evidenceIssueUrl": meta.get("evidence_issue_url"),
+                    "attachments": meta.get("attachments") or [],
                     "sourceFile": f"cases/{p.name}",
                 }
             )
@@ -746,6 +1051,7 @@ def cmd_export_ax(args: argparse.Namespace) -> int:
                     "summary": one_liner.get("en") if isinstance(one_liner, dict) else one_liner,
                     "auditorTool": data.get("auditorTool", "oss-audit v1.0.0"),
                     "evidenceIssueUrl": data.get("evidenceIssueUrl"),
+                    "attachments": data.get("attachments") or [],
                     "sourceFile": f"cases/{p.name}",
                 }
             )
@@ -793,7 +1099,7 @@ def cmd_export_ax(args: argparse.Namespace) -> int:
 
     llms_txt = """# oss-bureau
 
-Open-source privacy & telemetry registry backed by public source code, exact commit hashes, GitHub Issues, and pull requests.
+Open-source privacy & telemetry registry backed by public source code, exact commit hashes, GitHub Issues, archived evidence screenshots, and pull requests.
 
 ## Machine-Readable Endpoints
 
@@ -801,6 +1107,7 @@ Open-source privacy & telemetry registry backed by public source code, exact com
 - Case Bundle Schema v1.0.0: https://edison-land.github.io/oss-bureau/schema/case-bundle.v1.json
 - Source Repository: https://github.com/edison-land/oss-bureau
 - Case Files: https://github.com/edison-land/oss-bureau/tree/main/cases
+- Archived Evidence Attachments: https://github.com/edison-land/oss-bureau/tree/main/evidence
 
 ## Install Skill
 
@@ -808,12 +1115,12 @@ Open-source privacy & telemetry registry backed by public source code, exact com
 npx skills add edison-land/oss-bureau
 ```
 
-## Submit Evidence (Any Skill or Agent)
+## Submit Evidence & Attachments (Any Skill or Agent)
 
-1. Emit a JSON object conforming to `schema/case-bundle.v1.json` with exact `commit_hash`, `file_path`, `line_start`, `line_end`, and verbatim `code_snippet`.
-2. Open a Case Submission Issue: https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml
-3. Or open a Pull Request adding `cases/<slug>.json`.
-4. Automated CI validates the schema, verifies the target repo/commit/file paths via GitHub API, and classifies tier deterministically (`blacklist`, `watchlist`, `cleared`).
+1. Emit a JSON object conforming to `schema/case-bundle.v1.json` with canonical `https://` URLs (no shortlinks), exact `commit_hash`, `file_path`, `line_start`, `line_end`, and verbatim `code_snippet`.
+2. Open a Case Submission Issue (and optionally attach PNG/JPG/WebP screenshots): https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml
+3. Or open a Pull Request adding `cases/<slug>.json` and `evidence/<case-id>/*.png`.
+4. CI validates schema, blocks shortlinks and leaked secrets, verifies target repo/commit/file paths & snippet lines via GitHub API, enforces 100% attachment accounting, and classifies tier deterministically (`blacklist`, `watchlist`, `cleared`).
 """
     llms_out.write_text(llms_txt, encoding="utf-8")
     print(f"Exported AX endpoints ({len(cases_list)} cases, {len(pending_issues)} issues) -> {public_dir}")

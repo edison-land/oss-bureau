@@ -1,6 +1,6 @@
 # oss-bureau
 
-Open-source privacy & telemetry registry backed by public source code, exact commit hashes, GitHub Issues, and pull requests.
+Open-source privacy & telemetry registry backed by public source code, exact commit hashes, GitHub Issues, archived evidence screenshots, and pull requests.
 
 ## Machine-Readable Endpoints
 
@@ -8,6 +8,7 @@ Open-source privacy & telemetry registry backed by public source code, exact com
 - Case Bundle Schema v1.0.0: https://edison-land.github.io/oss-bureau/schema/case-bundle.v1.json
 - Source Repository: https://github.com/edison-land/oss-bureau
 - Case Files: https://github.com/edison-land/oss-bureau/tree/main/cases
+- Archived Evidence Attachments: https://github.com/edison-land/oss-bureau/tree/main/evidence
 
 ## Install Skill
 
@@ -15,9 +16,9 @@ Open-source privacy & telemetry registry backed by public source code, exact com
 npx skills add edison-land/oss-bureau
 ```
 
-## Submit Evidence (Any Skill or Agent)
+## Submit Evidence & Attachments (Any Skill or Agent)
 
-1. Emit a JSON object conforming to `schema/case-bundle.v1.json` with exact `commit_hash`, `file_path`, `line_start`, `line_end`, and verbatim `code_snippet`.
-2. Open a Case Submission Issue: https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml
-3. Or open a Pull Request adding `cases/<slug>.json`.
-4. Automated CI validates the schema, verifies the target repo/commit/file paths via GitHub API, and classifies tier deterministically (`blacklist`, `watchlist`, `cleared`).
+1. Emit a JSON object conforming to `schema/case-bundle.v1.json` with canonical `https://` URLs (no shortlinks), exact `commit_hash`, `file_path`, `line_start`, `line_end`, and verbatim `code_snippet`.
+2. Open a Case Submission Issue (and optionally attach PNG/JPG/WebP screenshots): https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml
+3. Or open a Pull Request adding `cases/<slug>.json` and `evidence/<case-id>/*.png`.
+4. CI validates schema, blocks shortlinks and leaked secrets, verifies target repo/commit/file paths & snippet lines via GitHub API, enforces 100% attachment accounting, and classifies tier deterministically (`blacklist`, `watchlist`, `cleared`).

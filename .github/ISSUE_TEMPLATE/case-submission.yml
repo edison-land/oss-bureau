@@ -1,21 +1,22 @@
-name: "🔍 Case Submission / 提交开源审计案宗"
-description: "Submit verifiable evidence (case-bundle.json) from oss-audit or your own Skill for public review and listing on the OSS Bureau board."
+name: "Case Submission / 提交开源审计案宗"
+description: "Submit verifiable evidence (case-bundle.json) and optional screenshots from oss-audit or your own Skill."
 title: "[Case] owner/repo"
 labels: ["case-submission"]
 body:
   - type: markdown
     attributes:
       value: |
-        **Evidence-First Rule**: All submissions are permanently archived in this public Issue.
-        An automated GitHub Action bot will validate your `case-bundle.json` against Schema `v1.0.0`, verify that the target repo / commit / file paths exist on GitHub, and compute the Red/Watch/Blacklist tier using our public rules.
-
-        支持使用 `oss-audit` 或**你自己的审计 Skill** 提交：只要输出符合 `case-bundle.v1.json` 规范的 JSON 即可自动验真与定级。
+        All evidence lives permanently in this public Issue. Automated CI checks:
+        - `case-bundle.v1.json` schema validation & deterministic tier calculation
+        - Canonical `https://` URLs only (shortlinks like `t.co` / `bit.ly` are blocked)
+        - Secret hygiene scan (blocks accidental tokens/keys)
+        - Remote GitHub API check of target repo, commit SHA, file paths & code snippets
+        - Uploaded screenshots (PNG/JPG/WebP ≤ 5 MB) are automatically archived into `evidence/` on approval
 
   - type: input
     id: target_repo
     attributes:
-      label: Target Repository / 目标仓库
-      description: "GitHub owner/repo or full URL (e.g. owner/repo)"
+      label: Target Repository
       placeholder: "owner/repo"
     validations:
       required: true
@@ -23,8 +24,7 @@ body:
   - type: input
     id: commit_hash
     attributes:
-      label: Audited Commit Hash / 审计 Commit
-      description: "Exact commit SHA audited (required for reproducible permalinks)"
+      label: Audited Commit SHA
       placeholder: "e.g. 70bde71191"
     validations:
       required: true
@@ -32,8 +32,7 @@ body:
   - type: input
     id: auditor_tool
     attributes:
-      label: Auditor Skill or Tool / 审计所用 Skill 或工具
-      description: "Name and version of the skill/script that produced this report (e.g. oss-audit v1.0.0, my-custom-security-skill v0.2)"
+      label: Auditor Skill or Tool
       placeholder: "oss-audit v1.0.0"
     validations:
       required: true
@@ -41,8 +40,7 @@ body:
   - type: textarea
     id: case_bundle_json
     attributes:
-      label: "case-bundle.json (v1.0.0) / 标准化证据包 JSON"
-      description: "Paste the complete JSON produced by oss-audit or any Skill following case-schema.json. Do not include personal secrets."
+      label: "case-bundle.json (v1.0.0)"
       render: json
       placeholder: |
         {
@@ -58,19 +56,28 @@ body:
       required: true
 
   - type: textarea
+    id: attachments
+    attributes:
+      label: Evidence Attachments (Optional Screenshots)
+      description: "Drag & drop PNG/JPG/WebP screenshots (≤ 5 MB each) of privacy claims, network captures, or terminal scans. Approved screenshots are archived permanently in `evidence/`."
+      placeholder: "Drop screenshots directly here..."
+    validations:
+      required: false
+
+  - type: textarea
     id: notes
     attributes:
-      label: Additional Context / 补充说明（可选）
-      description: "Optional reproduction steps, screenshots, or comparison notes."
+      label: Additional Canonical URLs / Context (Optional)
+      description: "Direct https:// URLs only (GitHub PRs, commits, archived docs). Never use shortened links."
     validations:
       required: false
 
   - type: checkboxes
     id: checklist
     attributes:
-      label: Fair-Play Confirmation / 客观取证确认
+      label: Verification Confirmation
       options:
-        - label: "All findings cite public source code paths and line numbers (no unverified speculation)."
+        - label: "All claims cite public source files, commit SHAs, or verifiable primary records (no shortlinks)."
           required: true
-        - label: "No personal secrets, tokens, or private user data are included in this submission."
+        - label: "No private personal data, API keys, tokens, or secrets are included."
           required: true

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ArrowUpIcon,
   ArrowUpRightIcon,
@@ -7,6 +7,7 @@ import {
   GithubIcon,
   MessageSquareIcon,
   MoonIcon,
+  PaperclipIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -84,6 +85,11 @@ function extractJsonFromIssueBody(body: string): string | null {
   return start !== -1 && end > start ? body.slice(start, end + 1) : null;
 }
 
+function parseHashCaseId(): string | null {
+  const match = window.location.hash.match(/^#case\/(.+)$/i);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
 export default function App() {
   const [lang, setLang] = useState<Lang>("en");
   const [scheme, setScheme] = useState<ResolvedScheme>(() => getResolvedScheme());
@@ -94,6 +100,7 @@ export default function App() {
   const [sortDir, setSortDir] = useState<SortDir>("ascending");
   const [sortAnnouncement, setSortAnnouncement] = useState("");
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [selectedDossier, setSelectedDossier] = useState<CaseDossier | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -112,26 +119,6 @@ export default function App() {
       mq.removeEventListener("change", sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
-
-  // Keyboard shortcut: `/` focuses search input
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.key === "/" &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.altKey &&
-        document.activeElement?.tagName !== "INPUT" &&
-        document.activeElement?.tagName !== "TEXTAREA"
-      ) {
-        e.preventDefault();
-        setView("board");
-        requestAnimationFrame(() => searchRef.current?.focus());
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const [localCases, setLocalCases] = useState<CaseDossier[]>(() => {
@@ -177,6 +164,45 @@ export default function App() {
     });
   }, [localCases, profile]);
 
+  const openDossier = useCallback((dossier: CaseDossier) => {
+    setSelectedDossier(dossier);
+    if (!dossier.isCustomPreview) {
+      const nextHash = `#case/${encodeURIComponent(dossier.caseId)}`;
+      if (window.location.hash !== nextHash) {
+        window.history.pushState(null, "", nextHash);
+      }
+    }
+  }, []);
+
+  const closeDossier = useCallback(() => {
+    setSelectedDossier(null);
+    if (window.location.hash.startsWith("#case/")) {
+      window.history.pushState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  // Deep link `#case/<CASE-ID>` support on load and hashchange
+  useEffect(() => {
+    const syncFromHash = () => {
+      const id = parseHashCaseId();
+      if (!id) {
+        setSelectedDossier(null);
+        return;
+      }
+      const match = allCases.find(
+        (c) => c.caseId.toLowerCase() === id.toLowerCase() || c.name.toLowerCase() === id.toLowerCase(),
+      );
+      if (match) setSelectedDossier(match);
+    };
+    syncFromHash();
+    window.addEventListener("hashchange", syncFromHash);
+    window.addEventListener("popstate", syncFromHash);
+    return () => {
+      window.removeEventListener("hashchange", syncFromHash);
+      window.removeEventListener("popstate", syncFromHash);
+    };
+  }, [allCases]);
+
   const counts = useMemo(
     () => ({
       all: allCases.length,
@@ -213,6 +239,43 @@ export default function App() {
       return COLLATOR.compare(a.caseId, b.caseId);
     });
   }, [allCases, filter, query, sortDir, sortKey]);
+
+  // Reset active highlight when filters change
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [filter, query, view]);
+
+  // Linear-style keyboard navigation: `/` search, `↑/↓` row selection, `Enter` open, `Esc` clear
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || selectedDossier || submitOpen) return;
+
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setView("board");
+        requestAnimationFrame(() => searchRef.current?.focus());
+        return;
+      }
+
+      if (view !== "board" || visibleCases.length === 0) return;
+
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault();
+        setActiveIndex((prev) => (prev < visibleCases.length - 1 ? prev + 1 : 0));
+      } else if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault();
+        setActiveIndex((prev) => (prev > 0 ? prev - 1 : visibleCases.length - 1));
+      } else if (e.key === "Enter" && activeIndex >= 0 && activeIndex < visibleCases.length) {
+        e.preventDefault();
+        openDossier(visibleCases[activeIndex]);
+      } else if (e.key === "Escape") {
+        setActiveIndex(-1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeIndex, openDossier, selectedDossier, submitOpen, view, visibleCases]);
 
   const handleSort = (key: SortKey, label: string) => {
     const nextDir: SortDir =
@@ -288,6 +351,7 @@ export default function App() {
           const reactions = (item.reactions as Record<string, number> | undefined) ?? {};
           const user = (item.user as Record<string, string> | undefined) ?? {};
           const title = String(item.title ?? "");
+          const imgMatches = body.match(/!\[[^\]]*\]\(https:\/\/[^)\s]+\)/g) ?? [];
 
           byNum.set(num, {
             number: num,
@@ -314,6 +378,7 @@ export default function App() {
               `Issue #${num}`,
             auditorTool: validBundle?.auditor_tool ?? null,
             summary: validBundle?.verdict.one_liner || title,
+            attachmentsCount: imgMatches.length,
             bundle: validBundle,
           });
         }
@@ -406,7 +471,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
-        {/* Focused Title Bar — zero tagline, zero filler */}
+        {/* Focused Title Bar */}
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <h1 className="font-heading font-semibold text-2xl tracking-tight text-foreground">
             {view === "board"
@@ -586,10 +651,12 @@ export default function App() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {visibleCases.map((c) => (
+                      {visibleCases.map((c, idx) => (
                         <TableRow
                           key={c.caseId}
-                          onClick={() => setSelectedDossier(c)}
+                          data-state={idx === activeIndex ? "selected" : undefined}
+                          onMouseEnter={() => setActiveIndex(idx)}
+                          onClick={() => openDossier(c)}
                           className="group cursor-pointer"
                         >
                           <TableCell data-label={lang === "zh" ? "仓库" : "Repository"}>
@@ -599,6 +666,12 @@ export default function App() {
                                 <Badge size="sm" variant="info">
                                   {lang === "zh" ? "部分整改" : "Patched"}
                                 </Badge>
+                              )}
+                              {(c.attachments?.length ?? 0) > 0 && (
+                                <span className="inline-flex items-center gap-0.5 font-mono text-[11px] text-muted-foreground">
+                                  <PaperclipIcon className="size-3" />
+                                  {c.attachments?.length}
+                                </span>
                               )}
                               {c.sourceType === "local" && (
                                 <span
@@ -711,7 +784,7 @@ export default function App() {
                     </EmptyHeader>
                     <EmptyContent className="flex-row justify-center gap-2">
                       <Button size="sm" onClick={() => setSubmitOpen(true)}>
-                        {lang === "zh" ? "提交 JSON" : "Submit JSON"}
+                        {lang === "zh" ? "提交证据" : "Submit evidence"}
                       </Button>
                       <Button
                         size="sm"
@@ -751,7 +824,7 @@ export default function App() {
                               sourceType: "community",
                               isCustomPreview: false,
                             });
-                            setSelectedDossier({
+                            openDossier({
                               ...dossier,
                               caseId: `ISSUE-#${iss.number}`,
                               submittedBy: iss.author,
@@ -763,7 +836,17 @@ export default function App() {
                           }
                         }}
                       >
-                        <TableCell className="font-medium">{iss.targetRepo}</TableCell>
+                        <TableCell className="font-medium">
+                          <span className="inline-flex items-center gap-2">
+                            {iss.targetRepo}
+                            {(iss.attachmentsCount ?? 0) > 0 && (
+                              <span className="inline-flex items-center gap-0.5 font-mono text-xs text-muted-foreground">
+                                <PaperclipIcon className="size-3" />
+                                {iss.attachmentsCount}
+                              </span>
+                            )}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           {iss.tier ? (
                             <StatusBadge tier={iss.tier} lang={lang} size="sm" />
@@ -836,7 +919,7 @@ export default function App() {
               </div>
             </Frame>
 
-            {/* Agent-Readable Static Endpoints (AX) */}
+            {/* Agent-Readable Static Endpoints & Evidence Registry */}
             <Frame>
               <FramePanel className="divide-y p-0">
                 {[
@@ -850,7 +933,12 @@ export default function App() {
                   {
                     label: "github.com/edison-land/oss-bureau/tree/main/cases",
                     href: `https://github.com/${REPO_SLUG}/tree/main/cases`,
-                    meta: "PR registry",
+                    meta: "Case PRs",
+                  },
+                  {
+                    label: "github.com/edison-land/oss-bureau/tree/main/evidence",
+                    href: `https://github.com/${REPO_SLUG}/tree/main/evidence`,
+                    meta: "Attachments",
                   },
                 ].map((item) => (
                   <a
@@ -923,14 +1011,14 @@ export default function App() {
         dossier={selectedDossier}
         lang={lang}
         profile={profile}
-        onClose={() => setSelectedDossier(null)}
+        onClose={closeDossier}
       />
 
       <SubmitTipDialog
         open={submitOpen}
         lang={lang}
         onClose={() => setSubmitOpen(false)}
-        onPreviewDossier={(d) => setSelectedDossier(d)}
+        onPreviewDossier={(d) => openDossier(d)}
         onAddLocalCase={handleAddLocalCase}
       />
     </div>

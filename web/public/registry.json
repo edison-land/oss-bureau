@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-11-27T04:38:27Z",
+  "generated_at": "2026-11-27T06:28:26Z",
   "repo": "https://github.com/edison-land/oss-bureau",
   "site": "https://edison-land.github.io/oss-bureau/",
   "tier_rules": {
@@ -37,6 +37,7 @@
       "summary": "Contradicts PRIVACY.md with default-on PostHog (GeoIP enabled, email aliasing), forced telemetry in JetBrains, explicit DO_NOT_TRACK rejection, and silent ~/.conda/aau_token harvesting.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-001-kilocode.json"
     },
     {
@@ -54,6 +55,7 @@
       "summary": "Historically hashed Codex JWT id_token & Claude account IDs for telemetry (removed 2026-11-24); default-on telemetry remains active with DO_NOT_TRACK added 2026-11-25 and no merged desktop Settings toggle yet.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-002-t3code.json"
     },
     {
@@ -71,6 +73,7 @@
       "summary": "Default-on Google Clearcut telemetry to play.googleapis.com (GPU model + hashed GitHub repo name); ignores DO_NOT_TRACK, hides toggle from /settings dialog, and GEMINI_TELEMETRY_ENABLED=false does not disable it.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-003-gemini-cli.json"
     },
     {
@@ -88,6 +91,7 @@
       "summary": "Ships default-on first-party analytics and Statsig metrics without DO_NOT_TRACK support; cleanly disabled via config.toml, with no cross-tool snooping.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-004-codex.json"
     },
     {
@@ -105,6 +109,7 @@
       "summary": "Default-on PostHog with node-machine-id, transparently documented and honoring DO_NOT_TRACK=1; still contacts data.cline.bot/decide with distinctId for feature flags when telemetry is off.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-005-cline.json"
     },
     {
@@ -122,6 +127,7 @@
       "summary": "Official builds ship opt-out PostHog (source builds default off) with GeoIP & person profiles disabled, random UUIDv4, strict schema allowlist, UI toggle, and DO_NOT_TRACK=1 support.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-006-orca.json"
     },
     {
@@ -139,6 +145,7 @@
       "summary": "Transparently disclosed default-on PostHog telemetry to data.charm.land using hashed hardware machineid, honoring DO_NOT_TRACK=1 and CRUSH_DISABLE_METRICS=1.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-007-crush.json"
     },
     {
@@ -156,6 +163,7 @@
       "summary": "Strictly opt-in with public sample analytics logs; minor caveats: 10% prompt defaults to [Yes], enables exception autocapture once opted in, and ignores DO_NOT_TRACK.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-008-aider.json"
     },
     {
@@ -173,6 +181,7 @@
       "summary": "Rust backend strictly enforces opt-in PostHog (`unwrap_or(false)`) with random UUIDv4 and no cross-tool snooping; minor note: desktop onboarding checkbox is pre-checked.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-009-goose.json"
     },
     {
@@ -190,6 +199,7 @@
       "summary": "PostHog/Sentry removed from core; CLI OTel telemetry only activates when user configures an OTLP endpoint. Minor note: still uses node-machine-id for uniqueId.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-010-continue.json"
     },
     {
@@ -207,6 +217,7 @@
       "summary": "Local backend, frontend, and release scripts unconditionally disable PostHog and Sentry (release script fails if keys appear), resulting in zero active telemetry.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-011-vibe-kanban.json"
     },
     {
@@ -224,6 +235,7 @@
       "summary": "Zero default telemetry; Sentry only fires when user clicks Report on crash page. High-privilege note: embedded browser supports user-triggered Chrome/Safari cookie import.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-012-opencode.json"
     },
     {
@@ -241,6 +253,7 @@
       "summary": "Zero active telemetry or analytics SDKs in runtime codebase at current main; no undisclosed cross-tool access.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-013-roo-code.json"
     },
     {
@@ -258,6 +271,7 @@
       "summary": "Zero telemetry and zero fingerprinting; even injects DISABLE_TELEMETRY=1 when invoking Claude Code for local usage checks.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-014-cc-switch.json"
     },
     {
@@ -275,6 +289,7 @@
       "summary": "Minimal offline Go terminal orchestrator with zero telemetry SDKs, zero HTTP calls, zero fingerprinting, and zero cross-tool credential reads.",
       "auditorTool": "oss-audit v1.0.0",
       "evidenceIssueUrl": null,
+      "attachments": [],
       "sourceFile": "cases/CASE-015-claude-squad.json"
     }
   ],

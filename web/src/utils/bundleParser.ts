@@ -1,6 +1,8 @@
 import type {
+  CaseAttachment,
   CaseDossier,
   DefaultTelemetry,
+  PreflightCheck,
   PromiseVerdict,
   RawCaseBundleV1,
   RiskLevel,
@@ -25,6 +27,31 @@ export interface TierEvaluationInput {
   doNotTrack?: "YES" | "NO" | "NA" | "NEW";
 }
 
+export interface LocalAttachmentDraft {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  dataUrl: string;
+  valid: boolean;
+  error?: string;
+}
+
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+const SHORTLINK_RE =
+  /\bhttps?:\/\/(?:t\.co|bit\.ly|tinyurl\.com|goo\.gl|ow\.ly|is\.gd|rb\.gy|buff\.ly)\/\S+/gi;
+
+const SECRET_RULES: Array<[string, RegExp]> = [
+  ["GitHub token", /\bgh[pousr]_[A-Za-z0-9]{20,}\b/],
+  ["GitHub PAT", /\bgithub_pat_[A-Za-z0-9_]{20,}\b/],
+  ["AWS key", /\bAKIA[0-9A-Z]{16}\b/],
+  ["Private key", /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/],
+  ["Slack token", /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/],
+  ["API key", /\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}\b/],
+];
+
 const VALID_RISK = new Set(["CLEAN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 const VALID_PROMISE = new Set([
   "CONSISTENT",
@@ -41,6 +68,119 @@ const VALID_TELEMETRY = new Set([
   "UNKNOWN",
 ]);
 
+export function findShortlinks(text: string): string[] {
+  if (!text) return [];
+  return [...new Set(text.match(SHORTLINK_RE) ?? [])];
+}
+
+export function findLeakedSecrets(text: string): string[] {
+  if (!text) return [];
+  const hits: string[] = [];
+  for (const [label, regex] of SECRET_RULES) {
+    if (regex.test(text)) hits.push(label);
+  }
+  return hits;
+}
+
+export function runPreflightChecks(params: {
+  text: string;
+  parseResult: ParseBundleResult | null;
+  attachments: LocalAttachmentDraft[];
+}): { checks: PreflightCheck[]; hasBlockingError: boolean } {
+  const checks: PreflightCheck[] = [];
+  const { text, parseResult, attachments } = params;
+
+  // 1. Schema
+  if (!text.trim()) {
+    checks.push({
+      id: "schema",
+      label: { en: "Schema v1.0.0", zh: "Schema v1.0.0" },
+      status: "warn",
+      detail: { en: "Waiting for case-bundle.json", zh: "等待输入 case-bundle.json" },
+    });
+  } else if (parseResult?.ok) {
+    checks.push({
+      id: "schema",
+      label: { en: "Schema v1.0.0", zh: "Schema v1.0.0" },
+      status: "pass",
+      detail: {
+        en: `${parseResult.dossier?.findings.length ?? 0} verified findings`,
+        zh: `${parseResult.dossier?.findings.length ?? 0} 条源码证据`,
+      },
+    });
+  } else {
+    checks.push({
+      id: "schema",
+      label: { en: "Schema v1.0.0", zh: "Schema v1.0.0" },
+      status: "fail",
+      detail: {
+        en: parseResult?.errors[0] || "Invalid bundle",
+        zh: parseResult?.errors[0] || "JSON 格式或字段无效",
+      },
+    });
+  }
+
+  // 2. Canonical URLs (no shortlinks)
+  const shortlinks = findShortlinks(text);
+  checks.push({
+    id: "urls",
+    label: { en: "Canonical URLs", zh: "一手规范链接" },
+    status: shortlinks.length === 0 ? "pass" : "fail",
+    detail:
+      shortlinks.length === 0
+        ? { en: "No shortened redirect links", zh: "无短链/跳转链" }
+        : {
+            en: `Blocked shortlink: ${shortlinks[0]}`,
+            zh: `拦截短链: ${shortlinks[0]}`,
+          },
+  });
+
+  // 3. Zero secrets
+  const secrets = findLeakedSecrets(text);
+  checks.push({
+    id: "secrets",
+    label: { en: "Zero secrets", zh: "密钥脱敏检查" },
+    status: secrets.length === 0 ? "pass" : "fail",
+    detail:
+      secrets.length === 0
+        ? { en: "No tokens or private keys detected", zh: "未检测到私钥或 Token" }
+        : {
+            en: `Redact ${secrets.join(", ")}`,
+            zh: `疑似含敏感信息: ${secrets.join(", ")}`,
+          },
+  });
+
+  // 4. Attachments
+  const invalidAtt = attachments.filter((a) => !a.valid);
+  if (invalidAtt.length > 0) {
+    checks.push({
+      id: "attachments",
+      label: { en: "Attachments", zh: "证据附件" },
+      status: "fail",
+      detail: {
+        en: invalidAtt[0].error || "Invalid image file",
+        zh: invalidAtt[0].error || "附件格式或大小超限",
+      },
+    });
+  } else {
+    checks.push({
+      id: "attachments",
+      label: { en: "Attachments", zh: "证据附件" },
+      status: "pass",
+      detail:
+        attachments.length === 0
+          ? { en: "Optional (PNG/JPG/WebP ≤ 5 MB)", zh: "可选（PNG/JPG/WebP ≤ 5 MB）" }
+          : {
+              en: `${attachments.length} image(s) verified`,
+              zh: `${attachments.length} 张截图通过校验`,
+            },
+    });
+  }
+
+  const hasBlockingError = checks.some((c) => c.status === "fail") || !parseResult?.ok;
+  return { checks, hasBlockingError };
+}
+
 export function evaluateTier(
   input: TierEvaluationInput,
   profile: SeverityProfile = "standard",
@@ -50,7 +190,7 @@ export function evaluateTier(
     blackReasons.push({
       rule: "CROSS_TOOL_ACCESS",
       tier: "blacklist",
-      zh: "存在跨工具窃密或静默读取外部工具凭证/配置（cross_tool_access = true）",
+      zh: "存在跨工具静默读取外部凭证或配置（cross_tool_access = true）",
       en: "Cross-tool credential or config snooping detected (cross_tool_access = true)",
     });
   }
@@ -79,21 +219,20 @@ export function evaluateTier(
     });
   }
 
-  // Strict privacy purist profile treats any default-on telemetry or DNT refusal as blacklist
   if (profile === "strict") {
     if (input.defaultTelemetry === "OPT_OUT_HARD" || input.defaultTelemetry === "OPT_OUT_EASY") {
       blackReasons.push({
         rule: "STRICT_NO_DEFAULT_TELEMETRY",
         tier: "blacklist",
-        zh: `洁癖标尺：默认开启遥测（${input.defaultTelemetry}）直接判入黑榜`,
-        en: `Strict profile: any default-on opt-out telemetry (${input.defaultTelemetry}) triggers blacklist`,
+        zh: `严格模式：默认开启遥测（${input.defaultTelemetry}）直接判入黑榜`,
+        en: `Strict profile: any default-on opt-out telemetry (${input.defaultTelemetry}) triggers Flagged`,
       });
     }
     if (input.doNotTrack === "NO" && input.defaultTelemetry !== "NONE") {
       blackReasons.push({
         rule: "STRICT_DNT_REQUIRED",
         tier: "blacklist",
-        zh: "洁癖标尺：存在遥测代码却拒绝响应 DO_NOT_TRACK=1",
+        zh: "严格模式：存在遥测代码却拒绝响应 DO_NOT_TRACK=1",
         en: "Strict profile: telemetry present while ignoring DO_NOT_TRACK=1",
       });
     }
@@ -152,12 +291,19 @@ export function evaluateTier(
   };
 }
 
+export function resolveAttachmentUrl(att: CaseAttachment): string {
+  if (att.previewDataUrl) return att.previewDataUrl;
+  if (att.path.startsWith("http://") || att.path.startsWith("https://")) return att.path;
+  return `./${att.path.replace(/^\.?\//, "")}`;
+}
+
 export function convertRawBundleToDossier(
   valid: RawCaseBundleV1,
   options?: {
     sourceType?: "official" | "community" | "local";
     isCustomPreview?: boolean;
     rawJson?: string;
+    attachments?: CaseAttachment[];
   },
 ): { dossier: CaseDossier; reasons: TierRuleHit[] } {
   const meta = valid.bureau_meta;
@@ -229,8 +375,8 @@ export function convertRawBundleToDossier(
     })),
     mitigationCommand: mitigationCmd,
     mitigationNote: {
-      zh: `由 ${valid.auditor_tool || "case-bundle.json"} 审计产物自动解析生成。`,
-      en: `Parsed automatically from ${valid.auditor_tool || "case-bundle.json"}.`,
+      zh: `由 ${valid.auditor_tool || "case-bundle.json"} 自动解析生成。`,
+      en: `Parsed from ${valid.auditor_tool || "case-bundle.json"}.`,
     },
     isCustomPreview: options?.isCustomPreview ?? sourceType === "local",
     auditorTool: valid.auditor_tool || "custom-skill",
@@ -238,6 +384,7 @@ export function convertRawBundleToDossier(
     evidenceIssueNumber: meta?.evidence_issue_number,
     evidenceIssueUrl: meta?.evidence_issue_url,
     sourceType,
+    attachments: options?.attachments ?? meta?.attachments ?? [],
     rawBundleJson: options?.rawJson,
   };
 
@@ -305,17 +452,56 @@ export function parseCaseBundleJson(text: string): ParseBundleResult {
   return { ok: true, dossier, raw: valid, reasons, errors: [] };
 }
 
+export function buildPrReadyBundle(
+  raw: RawCaseBundleV1,
+  attachments: LocalAttachmentDraft[],
+): { filename: string; content: string; evidenceDir: string } {
+  const slug = raw.target.name
+    .toLowerCase()
+    .replace("/", "-")
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const evidenceDir = `evidence/COMMUNITY-${slug}`;
+  const validAttachments = attachments.filter((a) => a.valid);
+  const mapped: CaseAttachment[] = validAttachments.map((att, idx) => {
+    const ext = att.type === "image/webp" ? "webp" : att.type === "image/jpeg" ? "jpg" : "png";
+    return {
+      path: `${evidenceDir}/${String(idx + 1).padStart(2, "0")}.${ext}`,
+      caption: att.name,
+    };
+  });
+
+  const merged: RawCaseBundleV1 = {
+    ...raw,
+    bureau_meta: {
+      ...raw.bureau_meta,
+      source_type: "community",
+      attachments: mapped,
+    },
+  };
+  return {
+    filename: `COMMUNITY-${slug}.json`,
+    evidenceDir,
+    content: JSON.stringify(merged, null, 2) + "\n",
+  };
+}
+
 export function buildCaseSubmissionIssueUrl(params: {
   repoName: string;
   commitHash?: string;
   auditorTool?: string;
   evidenceJson?: string;
   notes?: string;
+  attachmentHints?: string[];
 }): { url: string; jsonWasTooLong: boolean } {
   const title = `[Case] ${params.repoName}`;
   const rawJson = params.evidenceJson?.trim() || "";
-  const MAX_QUERY_JSON = 3800;
+  const MAX_QUERY_JSON = 3600;
   const jsonWasTooLong = rawJson.length > MAX_QUERY_JSON;
+
+  const attachmentHint = params.attachmentHints?.length
+    ? `Drop these validated screenshots here:\n${params.attachmentHints.map((n) => `- ${n}`).join("\n")}`
+    : "";
 
   const qs = new URLSearchParams({
     template: "case-submission.yml",
@@ -325,8 +511,9 @@ export function buildCaseSubmissionIssueUrl(params: {
     commit_hash: params.commitHash || "",
     auditor_tool: params.auditorTool || "oss-audit v1.0.0",
     case_bundle_json: jsonWasTooLong
-      ? "// Paste your full case-bundle.json here (already copied to your clipboard!)"
+      ? "// Paste your full case-bundle.json here (copied to clipboard)"
       : rawJson,
+    attachments: attachmentHint,
     notes: params.notes || "",
   });
   return {
@@ -348,22 +535,6 @@ export function buildRemediationAppealUrl(params: {
     explanation: params.explanation || "",
   });
   return `https://github.com/edison-land/oss-bureau/issues/new?${qs.toString()}`;
-}
-
-export function buildGitHubIssueUrl(params: {
-  repoName: string;
-  repoUrl?: string;
-  commitHash?: string;
-  summary: string;
-  evidenceJson?: string;
-}): string {
-  const { url } = buildCaseSubmissionIssueUrl({
-    repoName: params.repoName,
-    commitHash: params.commitHash,
-    evidenceJson: params.evidenceJson,
-    notes: params.summary,
-  });
-  return url;
 }
 
 export const UNIVERSAL_SKILL_CONTRACT = `When auditing an open-source repository for privacy, telemetry, cross-tool credential access, or supply-chain risks, output a strict JSON file conforming to OSS Bureau Case Bundle v1.0.0 so it can be verified and listed on https://edison-land.github.io/oss-bureau/:
@@ -410,6 +581,7 @@ export const UNIVERSAL_SKILL_CONTRACT = `When auditing an open-source repository
 }
 
 Rules:
-1. Only cite file_path, line_start, line_end, and code_snippet actually read from the repository at commit_hash.
-2. Exclude test fixtures, comments, dead code, and self-owned config paths.
-3. Submit the resulting JSON to https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml`;
+1. Canonical https:// URLs only (no shortened redirect links like t.co or bit.ly).
+2. Cite exact file_path, line_start, line_end, and verbatim code_snippet verified at commit_hash.
+3. Exclude secrets, personal tokens, test fixtures, comments, and self-owned config paths.
+4. Submit via https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml (screenshots attached to the Issue are auto-archived into evidence/ on approval).`;

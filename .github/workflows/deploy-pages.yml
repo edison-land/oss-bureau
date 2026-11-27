@@ -6,6 +6,7 @@ on:
     paths:
       - "web/**"
       - "cases/**"
+      - "evidence/**"
       - "scripts/bureau_bot.py"
       - ".github/workflows/deploy-pages.yml"
   issues:
