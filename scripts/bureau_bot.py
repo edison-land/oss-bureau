@@ -1074,6 +1074,7 @@ def cmd_export_ax(args: argparse.Namespace) -> int:
         "generated_at": now_iso,
         "repo": "https://github.com/edison-land/oss-bureau",
         "site": "https://edison-land.github.io/oss-bureau/",
+        "registry_url": "https://edison-land.github.io/oss-bureau/registry",
         "tier_rules": {
             "blacklist": [
                 "cross_tool_access == true",
@@ -1103,6 +1104,8 @@ Open-source privacy & telemetry registry backed by public source code, exact com
 
 ## Machine-Readable Endpoints
 
+- Landing Page: https://edison-land.github.io/oss-bureau/
+- Interactive Registry: https://edison-land.github.io/oss-bureau/registry
 - Registry JSON (all archived cases + pending issues): https://edison-land.github.io/oss-bureau/registry.json
 - Case Bundle Schema v1.0.0: https://edison-land.github.io/oss-bureau/schema/case-bundle.v1.json
 - Source Repository: https://github.com/edison-land/oss-bureau

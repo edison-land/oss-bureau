@@ -1,8 +1,9 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-11-27T06:28:26Z",
+  "generated_at": "2026-11-27T06:44:48Z",
   "repo": "https://github.com/edison-land/oss-bureau",
   "site": "https://edison-land.github.io/oss-bureau/",
+  "registry_url": "https://edison-land.github.io/oss-bureau/registry",
   "tier_rules": {
     "blacklist": [
       "cross_tool_access == true",

@@ -20,7 +20,7 @@ Don't trust "zero telemetry" landing pages. Verify the source code, pin evidence
 [![Cross-Agent Skill](https://img.shields.io/badge/Skill-Antigravity%20%7C%20Claude%20%7C%20Codex%20%7C%20Cursor-111827?style=flat)](skills/oss-audit/SKILL.md)
 [![Case Bundle v1.0.0](https://img.shields.io/badge/Protocol-Case%20Bundle%20v1.0.0-6366f1?style=flat)](skills/oss-audit/references/case-schema.json)
 
-🌐 **Interactive Case Board**: [https://edison-land.github.io/oss-bureau/](https://edison-land.github.io/oss-bureau/) · 📝 **[Submit Evidence Issue](https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml)** · ✅ **[Maintainer Fix Appeal](https://github.com/edison-land/oss-bureau/issues/new?template=remediation-appeal.yml)**
+🌐 **Home**: [https://edison-land.github.io/oss-bureau/](https://edison-land.github.io/oss-bureau/) · 📋 **[Live Registry](https://edison-land.github.io/oss-bureau/registry)** · 📝 **[Submit Evidence Issue](https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml)** · ✅ **[Maintainer Fix Appeal](https://github.com/edison-land/oss-bureau/issues/new?template=remediation-appeal.yml)**
 
 </div>
 

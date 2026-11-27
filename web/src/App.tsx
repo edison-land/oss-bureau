@@ -23,6 +23,7 @@ import type {
   Tier,
 } from "./types";
 import { DossierDialog } from "./components/DossierDialog";
+import { LandingView } from "./components/LandingView";
 import { SubmitTipDialog } from "./components/SubmitTipDialog";
 import { StatusBadge, formatDnt, formatStars, formatTelemetry } from "./components/StatusBadge";
 import {
@@ -61,7 +62,7 @@ import {
 } from "./components/ui/table";
 import { Tabs, TabsList, TabsTab } from "./components/ui/tabs";
 
-type MainView = "board" | "hearings" | "rules";
+type MainView = "home" | "board" | "hearings" | "rules";
 type FilterMode = "all" | Tier;
 type SortKey = "tier" | "name" | "stars";
 type SortDir = "ascending" | "descending";
@@ -70,12 +71,47 @@ const INSTALL_CMD = "npx skills add edison-land/oss-bureau";
 const LOCAL_STORAGE_KEY = "oss_bureau_local_sandbox_cases_v1";
 const REPO_SLUG = "edison-land/oss-bureau";
 const COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+const BASE_PREFIX = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
 
 const TIER_RANK: Record<Tier, number> = {
   blacklist: 0,
   watchlist: 1,
   cleared: 2,
 };
+
+function assetUrl(rel: string): string {
+  return `${BASE_PREFIX}/${rel.replace(/^\.?\//, "")}`;
+}
+
+function viewToPath(view: MainView): string {
+  if (view === "board") return `${BASE_PREFIX}/registry`;
+  if (view === "hearings") return `${BASE_PREFIX}/issues`;
+  if (view === "rules") return `${BASE_PREFIX}/protocol`;
+  return `${BASE_PREFIX}/`;
+}
+
+function parseLocationRoute(): { view: MainView; caseId: string | null } {
+  const rawPath = window.location.pathname;
+  const stripped =
+    BASE_PREFIX && rawPath.startsWith(BASE_PREFIX)
+      ? rawPath.slice(BASE_PREFIX.length)
+      : rawPath;
+  const seg = stripped.replace(/^\/+|\/+$/g, "");
+
+  // Legacy hash deep-link compatibility (#case/CASE-001)
+  const hashMatch = window.location.hash.match(/^#case\/(.+)$/i);
+  if (hashMatch?.[1]) {
+    return { view: "board", caseId: decodeURIComponent(hashMatch[1]) };
+  }
+
+  if (seg.toLowerCase().startsWith("case/")) {
+    return { view: "board", caseId: decodeURIComponent(seg.slice(5)) };
+  }
+  if (seg === "registry") return { view: "board", caseId: null };
+  if (seg === "issues") return { view: "hearings", caseId: null };
+  if (seg === "protocol") return { view: "rules", caseId: null };
+  return { view: "home", caseId: null };
+}
 
 function extractJsonFromIssueBody(body: string): string | null {
   const fenced = body.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i);
@@ -85,15 +121,10 @@ function extractJsonFromIssueBody(body: string): string | null {
   return start !== -1 && end > start ? body.slice(start, end + 1) : null;
 }
 
-function parseHashCaseId(): string | null {
-  const match = window.location.hash.match(/^#case\/(.+)$/i);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
-}
-
 export default function App() {
   const [lang, setLang] = useState<Lang>("en");
   const [scheme, setScheme] = useState<ResolvedScheme>(() => getResolvedScheme());
-  const [view, setView] = useState<MainView>("board");
+  const [view, setView] = useState<MainView>(() => parseLocationRoute().view);
   const [profile, setProfile] = useState<SeverityProfile>("standard");
   const [filter, setFilter] = useState<FilterMode>("all");
   const [sortKey, setSortKey] = useState<SortKey>("tier");
@@ -107,6 +138,7 @@ export default function App() {
   const [copiedContract, setCopiedContract] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const returnViewRef = useRef<MainView>("board");
   const tableCaptionId = useId();
 
   // Sync color scheme across tabs & OS changes
@@ -164,42 +196,66 @@ export default function App() {
     });
   }, [localCases, profile]);
 
-  const openDossier = useCallback((dossier: CaseDossier) => {
-    setSelectedDossier(dossier);
-    if (!dossier.isCustomPreview) {
-      const nextHash = `#case/${encodeURIComponent(dossier.caseId)}`;
-      if (window.location.hash !== nextHash) {
-        window.history.pushState(null, "", nextHash);
-      }
+  const totalStars = useMemo(() => CASES.reduce((sum, c) => sum + (c.stars ?? 0), 0), []);
+
+  const navigateTo = useCallback((nextView: MainView) => {
+    setSelectedDossier(null);
+    setView(nextView);
+    const targetUrl = viewToPath(nextView);
+    if (window.location.pathname !== targetUrl || window.location.hash) {
+      window.history.pushState(null, "", targetUrl);
     }
+    window.scrollTo({ top: 0 });
   }, []);
+
+  const openDossier = useCallback(
+    (dossier: CaseDossier) => {
+      returnViewRef.current = view === "home" ? "home" : "board";
+      setSelectedDossier(dossier);
+      if (!dossier.isCustomPreview) {
+        const nextUrl = `${BASE_PREFIX}/case/${encodeURIComponent(dossier.caseId)}`;
+        if (window.location.pathname !== nextUrl) {
+          window.history.pushState(null, "", nextUrl);
+        }
+      }
+    },
+    [view],
+  );
 
   const closeDossier = useCallback(() => {
     setSelectedDossier(null);
-    if (window.location.hash.startsWith("#case/")) {
-      window.history.pushState(null, "", window.location.pathname + window.location.search);
+    const targetView = returnViewRef.current;
+    const targetUrl = viewToPath(targetView);
+    if (window.location.pathname !== targetUrl || window.location.hash) {
+      window.history.pushState(null, "", targetUrl);
     }
   }, []);
 
-  // Deep link `#case/<CASE-ID>` support on load and hashchange
+  // Sync browser back/forward navigation and initial /case/:id deep links
   useEffect(() => {
-    const syncFromHash = () => {
-      const id = parseHashCaseId();
-      if (!id) {
+    const syncRoute = () => {
+      const parsed = parseLocationRoute();
+      setView(parsed.view);
+      if (!parsed.caseId) {
         setSelectedDossier(null);
         return;
       }
       const match = allCases.find(
-        (c) => c.caseId.toLowerCase() === id.toLowerCase() || c.name.toLowerCase() === id.toLowerCase(),
+        (c) =>
+          c.caseId.toLowerCase() === parsed.caseId!.toLowerCase() ||
+          c.name.toLowerCase() === parsed.caseId!.toLowerCase(),
       );
-      if (match) setSelectedDossier(match);
+      if (match) {
+        returnViewRef.current = "board";
+        setSelectedDossier(match);
+      }
     };
-    syncFromHash();
-    window.addEventListener("hashchange", syncFromHash);
-    window.addEventListener("popstate", syncFromHash);
+    syncRoute();
+    window.addEventListener("popstate", syncRoute);
+    window.addEventListener("hashchange", syncRoute);
     return () => {
-      window.removeEventListener("hashchange", syncFromHash);
-      window.removeEventListener("popstate", syncFromHash);
+      window.removeEventListener("popstate", syncRoute);
+      window.removeEventListener("hashchange", syncRoute);
     };
   }, [allCases]);
 
@@ -240,12 +296,11 @@ export default function App() {
     });
   }, [allCases, filter, query, sortDir, sortKey]);
 
-  // Reset active highlight when filters change
   useEffect(() => {
     setActiveIndex(-1);
   }, [filter, query, view]);
 
-  // Linear-style keyboard navigation: `/` search, `↑/↓` row selection, `Enter` open, `Esc` clear
+  // Linear-style keyboard navigation
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = document.activeElement?.tagName;
@@ -253,7 +308,7 @@ export default function App() {
 
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setView("board");
+        if (view !== "board") navigateTo("board");
         requestAnimationFrame(() => searchRef.current?.focus());
         return;
       }
@@ -275,7 +330,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeIndex, openDossier, selectedDossier, submitOpen, view, visibleCases]);
+  }, [activeIndex, navigateTo, openDossier, selectedDossier, submitOpen, view, visibleCases]);
 
   const handleSort = (key: SortKey, label: string) => {
     const nextDir: SortDir =
@@ -311,7 +366,7 @@ export default function App() {
       isCustomPreview: true,
     };
     setLocalCases((prev) => [stamped, ...prev.filter((p) => p.name !== stamped.name)]);
-    setView("board");
+    navigateTo("board");
     setFilter("all");
   };
 
@@ -397,26 +452,45 @@ export default function App() {
       <header className="sticky top-0 z-30 border-b bg-sidebar/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-6">
-            <button
-              type="button"
-              onClick={() => setView("board")}
+            <a
+              href={viewToPath("home")}
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo("home");
+              }}
               className="font-mono font-semibold text-sm tracking-tight text-foreground"
             >
               oss-bureau
-            </button>
+            </a>
 
             <nav aria-label="Primary" className="flex items-center gap-1">
               <Button
                 variant={view === "board" ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => setView("board")}
+                render={
+                  <a
+                    href={viewToPath("board")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateTo("board");
+                    }}
+                  />
+                }
               >
                 {lang === "zh" ? "名录" : "Registry"}
               </Button>
               <Button
                 variant={view === "hearings" ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => setView("hearings")}
+                render={
+                  <a
+                    href={viewToPath("hearings")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateTo("hearings");
+                    }}
+                  />
+                }
               >
                 {lang === "zh" ? "听证" : "Issues"}
                 {communityIssues.length > 0 && (
@@ -428,7 +502,15 @@ export default function App() {
               <Button
                 variant={view === "rules" ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => setView("rules")}
+                render={
+                  <a
+                    href={viewToPath("rules")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateTo("rules");
+                    }}
+                  />
+                }
               >
                 {lang === "zh" ? "协议" : "Protocol"}
               </Button>
@@ -471,37 +553,56 @@ export default function App() {
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 sm:py-10">
-        {/* Focused Title Bar */}
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <h1 className="font-heading font-semibold text-2xl tracking-tight text-foreground">
-            {view === "board"
-              ? lang === "zh"
-                ? "开源遥测名录"
-                : "Open-source telemetry registry"
-              : view === "hearings"
+        {/* VIEW 0: LANDING PAGE (/) */}
+        {view === "home" && (
+          <LandingView
+            lang={lang}
+            cases={allCases}
+            counts={counts}
+            totalStars={totalStars}
+            installCmd={INSTALL_CMD}
+            copiedCmd={copiedCmd}
+            onCopyInstallCmd={() => void copyInstallCmd()}
+            onOpenRegistry={() => navigateTo("board")}
+            onOpenProtocol={() => navigateTo("rules")}
+            onOpenSubmit={() => setSubmitOpen(true)}
+            onInspectCase={openDossier}
+          />
+        )}
+
+        {/* SUB-PAGES TITLE BAR (/registry, /issues, /protocol) */}
+        {view !== "home" && (
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <h1 className="font-heading font-semibold text-2xl tracking-tight text-foreground">
+              {view === "board"
                 ? lang === "zh"
-                  ? "社区听证 Issues"
-                  : "Pending submissions"
-                : lang === "zh"
-                  ? "规则与 Agent 协议"
-                  : "Rules & agent protocol"}
-          </h1>
+                  ? "开源遥测名录"
+                  : "Open-source telemetry registry"
+                : view === "hearings"
+                  ? lang === "zh"
+                    ? "社区听证 Issues"
+                    : "Pending submissions"
+                  : lang === "zh"
+                    ? "规则与 Agent 协议"
+                    : "Rules & agent protocol"}
+            </h1>
 
-          <button
-            type="button"
-            onClick={copyInstallCmd}
-            className="inline-flex h-8 w-fit items-center gap-2 rounded-lg border border-input bg-background px-3 font-mono text-xs text-foreground shadow-xs/5 transition-colors hover:bg-accent/50"
-          >
-            <span>{INSTALL_CMD}</span>
-            {copiedCmd ? (
-              <CheckIcon className="size-3.5 text-success" />
-            ) : (
-              <CopyIcon className="size-3.5 text-muted-foreground" />
-            )}
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => void copyInstallCmd()}
+              className="inline-flex h-8 w-fit items-center gap-2 rounded-lg border border-input bg-background px-3 font-mono text-xs text-foreground shadow-xs/5 transition-colors hover:bg-accent/50"
+            >
+              <span>{INSTALL_CMD}</span>
+              {copiedCmd ? (
+                <CheckIcon className="size-3.5 text-success" />
+              ) : (
+                <CopyIcon className="size-3.5 text-muted-foreground" />
+              )}
+            </button>
+          </div>
+        )}
 
-        {/* VIEW 1: REGISTRY */}
+        {/* VIEW 1: REGISTRY (/registry) */}
         {view === "board" && (
           <section className="mt-6 space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -736,7 +837,7 @@ export default function App() {
           </section>
         )}
 
-        {/* VIEW 2: COMMUNITY ISSUES */}
+        {/* VIEW 2: COMMUNITY ISSUES (/issues) */}
         {view === "hearings" && (
           <section className="mt-6 space-y-4">
             <div className="flex items-center justify-end gap-2">
@@ -882,7 +983,7 @@ export default function App() {
           </section>
         )}
 
-        {/* VIEW 3: RULES & AGENT PROTOCOL */}
+        {/* VIEW 3: RULES & AGENT PROTOCOL (/protocol) */}
         {view === "rules" && (
           <section className="mt-6 space-y-6">
             <Frame>
@@ -923,11 +1024,11 @@ export default function App() {
             <Frame>
               <FramePanel className="divide-y p-0">
                 {[
-                  { label: "llms.txt", href: "./llms.txt", meta: "Agent index" },
-                  { label: "registry.json", href: "./registry.json", meta: "JSON API" },
+                  { label: "llms.txt", href: assetUrl("llms.txt"), meta: "Agent index" },
+                  { label: "registry.json", href: assetUrl("registry.json"), meta: "JSON API" },
                   {
                     label: "schema/case-bundle.v1.json",
-                    href: "./schema/case-bundle.v1.json",
+                    href: assetUrl("schema/case-bundle.v1.json"),
                     meta: "JSON Schema",
                   },
                   {
@@ -965,7 +1066,7 @@ export default function App() {
                   <span className="font-mono text-xs text-muted-foreground">
                     Universal Skill Contract
                   </span>
-                  <Button size="xs" variant="outline" onClick={copyContract}>
+                  <Button size="xs" variant="outline" onClick={() => void copyContract()}>
                     {copiedContract ? <CheckIcon /> : <CopyIcon />}
                     {copiedContract
                       ? lang === "zh"
@@ -996,10 +1097,10 @@ export default function App() {
             {REPO_SLUG}
           </a>
           <div className="flex items-center gap-4">
-            <a href="./llms.txt" className="hover:text-foreground">
+            <a href={assetUrl("llms.txt")} className="hover:text-foreground">
               llms.txt
             </a>
-            <a href="./registry.json" className="hover:text-foreground">
+            <a href={assetUrl("registry.json")} className="hover:text-foreground">
               registry.json
             </a>
             <span>MIT</span>

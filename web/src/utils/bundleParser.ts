@@ -294,7 +294,8 @@ export function evaluateTier(
 export function resolveAttachmentUrl(att: CaseAttachment): string {
   if (att.previewDataUrl) return att.previewDataUrl;
   if (att.path.startsWith("http://") || att.path.startsWith("https://")) return att.path;
-  return `./${att.path.replace(/^\.?\//, "")}`;
+  const base = import.meta.env.BASE_URL || "/";
+  return `${base}${att.path.replace(/^\.?\//, "")}`;
 }
 
 export function convertRawBundleToDossier(

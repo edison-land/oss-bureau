@@ -87,8 +87,10 @@ export function DossierDialog({
 
   const handleCopyDeepLink = async () => {
     if (!dossier) return;
-    const base = `${window.location.origin}${window.location.pathname}`;
-    await navigator.clipboard.writeText(`${base}#case/${encodeURIComponent(dossier.caseId)}`);
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    await navigator.clipboard.writeText(
+      `${window.location.origin}${base}/case/${encodeURIComponent(dossier.caseId)}`,
+    );
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 1800);
   };
