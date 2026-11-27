@@ -1,22 +1,35 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <title>OSS Bureau — 开源调查局 | Open-Source Privacy & Telemetry Dossiers</title>
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        var stored = localStorage.getItem("color-scheme");
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if (stored === "light" || stored === "dark") {
+          if (meta) meta.content = stored;
+          document.documentElement.classList.toggle("dark", stored === "dark");
+        } else {
+          var isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.classList.toggle("dark", isDark);
+        }
+      } catch (e) {}
+    </script>
+    <title>oss-bureau — Open-Source Privacy & Telemetry Registry</title>
     <meta
       name="description"
-      content="Open-source privacy, telemetry, and security case board. Evidence-first code dossiers, Promise vs. Reality diffs, and zero-dependency oss-audit Skill."
+      content="Code-verified privacy, telemetry, and security dossiers for open-source AI tools and CLIs. Evidence lives permanently in public GitHub Issues and PRs."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
   </head>
-  <body class="bg-[#090b0f] text-zinc-100 antialiased selection:bg-red-500/30 selection:text-red-100">
+  <body class="relative bg-sidebar font-sans text-foreground antialiased selection:bg-foreground selection:text-background">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
