@@ -686,6 +686,140 @@ def cmd_sync_issues(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_ax(args: argparse.Namespace) -> int:
+    """Export machine-readable static AX endpoints into web/public/."""
+    public_dir = Path(args.out_dir)
+    schema_out = public_dir / "schema" / "case-bundle.v1.json"
+    registry_out = public_dir / "registry.json"
+    llms_out = public_dir / "llms.txt"
+
+    public_dir.mkdir(parents=True, exist_ok=True)
+    schema_out.parent.mkdir(parents=True, exist_ok=True)
+
+    schema_src = REPO_ROOT / "skills" / "oss-audit" / "references" / "case-schema.json"
+    if schema_src.exists():
+        schema_out.write_text(schema_src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    cases_list: list[dict[str, Any]] = []
+    for p in sorted((REPO_ROOT / "cases").glob("*.json")):
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(data, dict) and "schema_version" in data:
+            tier, _ = evaluate_tier(data)
+            meta = data.get("bureau_meta") or {}
+            cases_list.append(
+                {
+                    "caseId": meta.get("case_id") or data.get("case_id") or p.stem,
+                    "name": data["target"]["name"],
+                    "repoUrl": data["target"].get("repo_url"),
+                    "commitHash": data["target"].get("commit_hash"),
+                    "tier": meta.get("tier") or tier,
+                    "status": meta.get("status") or "VERIFIED",
+                    "defaultTelemetry": data["verdict"]["default_telemetry"],
+                    "doNotTrack": meta.get("do_not_track", "NA"),
+                    "crossToolAccess": data["verdict"]["cross_tool_access"],
+                    "promiseVsReality": data["verdict"]["promise_vs_reality"],
+                    "stars": meta.get("stars"),
+                    "summary": data["verdict"]["one_liner"],
+                    "auditorTool": data.get("auditor_tool"),
+                    "evidenceIssueUrl": meta.get("evidence_issue_url"),
+                    "sourceFile": f"cases/{p.name}",
+                }
+            )
+        elif isinstance(data, dict) and "caseId" in data:
+            one_liner = data.get("oneLiner")
+            cases_list.append(
+                {
+                    "caseId": data["caseId"],
+                    "name": data["name"],
+                    "repoUrl": data.get("repoUrl"),
+                    "commitHash": data.get("commitHash"),
+                    "tier": data["tier"],
+                    "status": data.get("status"),
+                    "defaultTelemetry": data.get("defaultTelemetry"),
+                    "doNotTrack": data.get("doNotTrack"),
+                    "crossToolAccess": data.get("crossToolAccess"),
+                    "promiseVsReality": data.get("promiseVsReality"),
+                    "stars": data.get("stars"),
+                    "summary": one_liner.get("en") if isinstance(one_liner, dict) else one_liner,
+                    "auditorTool": data.get("auditorTool", "oss-audit v1.0.0"),
+                    "evidenceIssueUrl": data.get("evidenceIssueUrl"),
+                    "sourceFile": f"cases/{p.name}",
+                }
+            )
+
+    pending_issues: list[dict[str, Any]] = []
+    issues_file = REPO_ROOT / "web" / "src" / "data" / "communityIssues.json"
+    if issues_file.exists():
+        try:
+            snap = json.loads(issues_file.read_text(encoding="utf-8"))
+            pending_issues = [
+                {k: v for k, v in item.items() if k != "bundle"}
+                for item in (snap.get("issues") or [])
+            ]
+        except Exception:
+            pass
+
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    registry_payload = {
+        "schema_version": "1.0.0",
+        "generated_at": now_iso,
+        "repo": "https://github.com/edison-land/oss-bureau",
+        "site": "https://edison-land.github.io/oss-bureau/",
+        "tier_rules": {
+            "blacklist": [
+                "cross_tool_access == true",
+                "promise_vs_reality == DIRECT_CONTRADICTION",
+                "default_telemetry == FORCED",
+                "risk_level in [HIGH, CRITICAL]",
+            ],
+            "watchlist": [
+                "default_telemetry in [OPT_OUT_HARD, OPT_OUT_EASY]",
+                "promise_vs_reality == PARTIAL_MISMATCH",
+                "risk_level == MEDIUM",
+            ],
+            "cleared": [
+                "default_telemetry in [NONE, OPT_IN]",
+                "cross_tool_access == false",
+                "risk_level in [CLEAN, LOW]",
+            ],
+        },
+        "cases": cases_list,
+        "pending_issues": pending_issues,
+    }
+    registry_out.write_text(json.dumps(registry_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    llms_txt = """# oss-bureau
+
+Open-source privacy & telemetry registry backed by public source code, exact commit hashes, GitHub Issues, and pull requests.
+
+## Machine-Readable Endpoints
+
+- Registry JSON (all archived cases + pending issues): https://edison-land.github.io/oss-bureau/registry.json
+- Case Bundle Schema v1.0.0: https://edison-land.github.io/oss-bureau/schema/case-bundle.v1.json
+- Source Repository: https://github.com/edison-land/oss-bureau
+- Case Files: https://github.com/edison-land/oss-bureau/tree/main/cases
+
+## Install Skill
+
+```bash
+npx skills add edison-land/oss-bureau
+```
+
+## Submit Evidence (Any Skill or Agent)
+
+1. Emit a JSON object conforming to `schema/case-bundle.v1.json` with exact `commit_hash`, `file_path`, `line_start`, `line_end`, and verbatim `code_snippet`.
+2. Open a Case Submission Issue: https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml
+3. Or open a Pull Request adding `cases/<slug>.json`.
+4. Automated CI validates the schema, verifies the target repo/commit/file paths via GitHub API, and classifies tier deterministically (`blacklist`, `watchlist`, `cleared`).
+"""
+    llms_out.write_text(llms_txt, encoding="utf-8")
+    print(f"Exported AX endpoints ({len(cases_list)} cases, {len(pending_issues)} issues) -> {public_dir}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="OSS Bureau GitHub Intake & Sync Bot")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -713,6 +847,10 @@ def main() -> int:
     p_sync.add_argument("--repo", default="edison-land/oss-bureau")
     p_sync.add_argument("--out", default=str(REPO_ROOT / "web" / "src" / "data" / "communityIssues.json"))
     p_sync.set_defaults(func=cmd_sync_issues)
+
+    p_ax = sub.add_parser("export-ax")
+    p_ax.add_argument("--out-dir", default=str(REPO_ROOT / "web" / "public"))
+    p_ax.set_defaults(func=cmd_export_ax)
 
     args = parser.parse_args()
     return args.func(args)

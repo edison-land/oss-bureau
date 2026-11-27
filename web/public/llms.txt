@@ -1,0 +1,23 @@
+# oss-bureau
+
+Open-source privacy & telemetry registry backed by public source code, exact commit hashes, GitHub Issues, and pull requests.
+
+## Machine-Readable Endpoints
+
+- Registry JSON (all archived cases + pending issues): https://edison-land.github.io/oss-bureau/registry.json
+- Case Bundle Schema v1.0.0: https://edison-land.github.io/oss-bureau/schema/case-bundle.v1.json
+- Source Repository: https://github.com/edison-land/oss-bureau
+- Case Files: https://github.com/edison-land/oss-bureau/tree/main/cases
+
+## Install Skill
+
+```bash
+npx skills add edison-land/oss-bureau
+```
+
+## Submit Evidence (Any Skill or Agent)
+
+1. Emit a JSON object conforming to `schema/case-bundle.v1.json` with exact `commit_hash`, `file_path`, `line_start`, `line_end`, and verbatim `code_snippet`.
+2. Open a Case Submission Issue: https://github.com/edison-land/oss-bureau/issues/new?template=case-submission.yml
+3. Or open a Pull Request adding `cases/<slug>.json`.
+4. Automated CI validates the schema, verifies the target repo/commit/file paths via GitHub API, and classifies tier deterministically (`blacklist`, `watchlist`, `cleared`).

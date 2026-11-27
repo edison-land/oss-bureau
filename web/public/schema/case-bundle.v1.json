@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oss-bureau.org/schemas/case-bundle.v1.json",
+  "title": "OSS Bureau Case Bundle",
+  "description": "Structured evidence package produced by the oss-audit skill for verifiable open-source privacy, telemetry, and security audits.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "auditor_tool",
+    "target",
+    "verdict",
+    "findings",
+    "user_mitigations"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "case_id": {
+      "type": "string",
+      "description": "Optional local slug or platform-assigned case identifier."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "auditor_tool": {
+      "type": "string",
+      "description": "Name and version of the auditing skill/script."
+    },
+    "target": {
+      "type": "object",
+      "required": ["name", "audited_scope"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "repo_url": { "type": ["string", "null"] },
+        "website_url": { "type": ["string", "null"] },
+        "commit_hash": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "commit_date": { "type": ["string", "null"] },
+        "audited_scope": {
+          "type": "string",
+          "enum": ["repo", "local", "both"]
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "required": [
+        "risk_level",
+        "one_liner",
+        "promise_vs_reality",
+        "default_telemetry",
+        "cross_tool_access"
+      ],
+      "properties": {
+        "risk_level": {
+          "type": "string",
+          "enum": ["CLEAN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        },
+        "one_liner": { "type": "string", "minLength": 1 },
+        "promise_vs_reality": {
+          "type": "string",
+          "enum": [
+            "CONSISTENT",
+            "PARTIAL_MISMATCH",
+            "DIRECT_CONTRADICTION",
+            "NO_CLAIM_FOUND"
+          ]
+        },
+        "default_telemetry": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "OPT_IN",
+            "OPT_OUT_EASY",
+            "OPT_OUT_HARD",
+            "FORCED",
+            "UNKNOWN"
+          ]
+        },
+        "cross_tool_access": { "type": "boolean" }
+      }
+    },
+    "promises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "quote"],
+        "properties": {
+          "source": { "type": "string" },
+          "quote": { "type": "string" },
+          "file_path": { "type": ["string", "null"] },
+          "line": { "type": ["integer", "null"] },
+          "url": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "severity",
+          "title",
+          "summary",
+          "verified",
+          "file_path",
+          "line_start",
+          "line_end",
+          "code_snippet"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": [
+              "telemetry",
+              "sensitive_access",
+              "promise_mismatch",
+              "supply_chain",
+              "security"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+          },
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "verified": { "type": "boolean" },
+          "default_enabled": { "type": ["boolean", "null"] },
+          "file_path": { "type": "string" },
+          "line_start": { "type": "integer", "minimum": 1 },
+          "line_end": { "type": "integer", "minimum": 1 },
+          "code_snippet": { "type": "string" },
+          "permalink": { "type": ["string", "null"] },
+          "introduced_in_commit": { "type": ["string", "null"] },
+          "remediation": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "user_mitigations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action", "command_or_config"],
+        "properties": {
+          "action": { "type": "string" },
+          "command_or_config": { "type": "string" },
+          "scope": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "disclaimer": {
+      "type": "string"
+    }
+  }
+}

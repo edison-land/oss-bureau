@@ -178,6 +178,19 @@
   }
 }
 
+/* Sortable table header semantics (modern-web-guidance: sortable-table) */
+th:has(> button.sort-trigger) {
+  padding: 0;
+}
+
+th[aria-sort] .sort-indicator {
+  opacity: 1;
+}
+
+th[aria-sort="descending"] .sort-indicator {
+  transform: rotate(180deg);
+}
+
 /* Responsive container-query table helper (modern-web-guidance: responsive-table) */
 .registry-table-region {
   container-type: inline-size;
@@ -185,7 +198,7 @@
   max-inline-size: 100%;
 }
 
-@container (width < 720px) {
+@container (width < 640px) {
   .registry-table-region table,
   .registry-table-region thead,
   .registry-table-region tbody,

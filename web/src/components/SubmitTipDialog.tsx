@@ -1,12 +1,9 @@
 import { useState } from "react";
 import {
   AlertCircleIcon,
-  CheckCircle2Icon,
+  ArrowUpRightIcon,
   CheckIcon,
   CopyIcon,
-  ExternalLinkIcon,
-  EyeIcon,
-  GitPullRequestIcon,
   PlusIcon,
   UploadIcon,
 } from "lucide-react";
@@ -17,12 +14,11 @@ import {
   buildRemediationAppealUrl,
   parseCaseBundleJson,
 } from "../utils/bundleParser";
-import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
-import { Badge } from "./ui/badge";
+import { StatusBadge } from "./StatusBadge";
+import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
   Dialog,
-  DialogDescription,
   DialogHeader,
   DialogPanel,
   DialogPopup,
@@ -48,28 +44,20 @@ export function SubmitTipDialog({
   onAddLocalCase,
 }: SubmitTipDialogProps) {
   const [tab, setTab] = useState("json");
-
-  // JSON bundle state
   const [jsonText, setJsonText] = useState("");
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [parsedDossier, setParsedDossier] = useState<CaseDossier | null>(null);
   const [ruleReasons, setRuleReasons] = useState<TierRuleHit[]>([]);
   const [dragging, setDragging] = useState(false);
   const [copiedJsonNotice, setCopiedJsonNotice] = useState(false);
-  const [addedLocalNotice, setAddedLocalNotice] = useState(false);
-
-  // Contract copy state
   const [copiedContract, setCopiedContract] = useState(false);
 
-  // Manual tip state
   const [repoName, setRepoName] = useState("");
   const [commitHash, setCommitHash] = useState("");
-  const [auditorTool, setAuditorTool] = useState("oss-audit v1.0.0");
   const [summary, setSummary] = useState("");
 
   const handleJsonChange = (text: string) => {
     setJsonText(text);
-    setAddedLocalNotice(false);
     setCopiedJsonNotice(false);
     if (!text.trim()) {
       setParseErrors([]);
@@ -91,8 +79,7 @@ export function SubmitTipDialog({
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    const text = await file.text();
-    handleJsonChange(text);
+    handleJsonChange(await file.text());
   };
 
   const handleSubmitJsonToGitHub = async () => {
@@ -109,7 +96,7 @@ export function SubmitTipDialog({
         await navigator.clipboard.writeText(jsonText);
         setCopiedJsonNotice(true);
       } catch {
-        // Clipboard optional
+        // Optional
       }
     }
     window.open(url, "_blank", "noopener,noreferrer");
@@ -124,28 +111,8 @@ export function SubmitTipDialog({
   const manualIssue = buildCaseSubmissionIssueUrl({
     repoName: repoName.trim() || "owner/repo",
     commitHash: commitHash.trim() || "",
-    auditorTool: auditorTool.trim() || "custom-skill",
     notes: summary.trim() || "",
   });
-
-  const tierMeta =
-    parsedDossier?.tier === "blacklist"
-      ? {
-          variant: "error" as const,
-          dot: "bg-destructive",
-          label: lang === "zh" ? "黑榜 · Flagged" : "Flagged",
-        }
-      : parsedDossier?.tier === "watchlist"
-        ? {
-            variant: "warning" as const,
-            dot: "bg-warning",
-            label: lang === "zh" ? "灰榜 · Watch" : "Watch",
-          }
-        : {
-            variant: "success" as const,
-            dot: "bg-success",
-            label: lang === "zh" ? "红榜 · Clean" : "Clean",
-          };
 
   return (
     <Dialog
@@ -154,33 +121,20 @@ export function SubmitTipDialog({
         if (!next) onClose();
       }}
     >
-      <DialogPopup className="max-w-2xl">
+      <DialogPopup className="max-w-xl">
         <DialogHeader className="pr-12">
-          <DialogTitle>
-            {lang === "zh" ? "提交源码证据 & 评定红黑榜" : "Submit evidence & classify bundle"}
-          </DialogTitle>
-          <DialogDescription>
-            {lang === "zh"
-              ? "支持 oss-audit 或任意自定义 Skill 产出的 case-bundle.v1.json，证据永久固定在公开 GitHub Issue。"
-              : "Drop a case-bundle.v1.json from oss-audit or your own Skill. Evidence is archived publicly in GitHub Issues and PRs."}
-          </DialogDescription>
+          <DialogTitle>{lang === "zh" ? "提交证据" : "Submit evidence"}</DialogTitle>
         </DialogHeader>
 
         <DialogPanel>
           <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
             <TabsList className="w-full sm:w-fit">
-              <TabsTab value="json">
-                {lang === "zh" ? "导入 JSON 定级" : "Drop JSON"}
-              </TabsTab>
-              <TabsTab value="contract">
-                {lang === "zh" ? "接入自有 Skill" : "Bring your Skill"}
-              </TabsTab>
-              <TabsTab value="manual">
-                {lang === "zh" ? "手动提交 / 申诉" : "Manual / Appeal"}
-              </TabsTab>
+              <TabsTab value="json">case-bundle.json</TabsTab>
+              <TabsTab value="contract">{lang === "zh" ? "Skill 契约" : "Skill contract"}</TabsTab>
+              <TabsTab value="manual">{lang === "zh" ? "表单" : "Form"}</TabsTab>
             </TabsList>
 
-            <TabsPanel value="json" className="mt-4 space-y-4">
+            <TabsPanel value="json" className="mt-4 space-y-3.5">
               <label
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -192,20 +146,15 @@ export function SubmitTipDialog({
                   setDragging(false);
                   void handleFile(e.dataTransfer.files?.[0]);
                 }}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center transition-colors ${
+                className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-sm transition-colors ${
                   dragging
                     ? "border-foreground bg-accent"
                     : "border-input bg-muted/40 hover:bg-muted/70"
                 }`}
               >
-                <UploadIcon className="mb-2 size-5 text-muted-foreground" />
-                <span className="font-medium text-sm text-foreground">
-                  {lang === "zh"
-                    ? "拖拽 case-bundle.json 到此处，或点击选择文件"
-                    : "Drop case-bundle.json here, or click to browse"}
-                </span>
-                <span className="mt-1 font-mono text-xs text-muted-foreground">
-                  Schema v1.0.0 · 100% client-side validation
+                <UploadIcon className="size-4 text-muted-foreground" />
+                <span>
+                  {lang === "zh" ? "拖入或选择 case-bundle.json" : "Drop or select case-bundle.json"}
                 </span>
                 <input
                   type="file"
@@ -220,80 +169,37 @@ export function SubmitTipDialog({
                 onChange={(e) => handleJsonChange(e.target.value)}
                 rows={5}
                 className="font-mono text-xs"
-                placeholder={
-                  lang === "zh"
-                    ? "或直接粘贴 case-bundle.json 内容..."
-                    : "Or paste raw case-bundle.json contents..."
-                }
+                placeholder="{ ... }"
               />
 
               {parseErrors.length > 0 && (
                 <Alert variant="error">
                   <AlertCircleIcon />
-                  <AlertTitle>
-                    {lang === "zh" ? "Schema 校验未通过" : "Schema validation failed"}
-                  </AlertTitle>
-                  <AlertDescription>
-                    <ul className="list-disc space-y-0.5 pl-4 font-mono text-xs">
-                      {parseErrors.map((err, idx) => (
-                        <li key={idx}>{err}</li>
-                      ))}
-                    </ul>
+                  <AlertDescription className="font-mono text-xs">
+                    {parseErrors.join(" · ")}
                   </AlertDescription>
                 </Alert>
               )}
 
               {parsedDossier && (
-                <div className="space-y-3 rounded-xl border bg-card p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <CheckCircle2Icon className="size-4 text-success" />
-                      <span>{parsedDossier.name}</span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        ({parsedDossier.findings.length}{" "}
-                        {lang === "zh" ? "条证据" : "findings"})
-                      </span>
-                    </div>
-                    <Badge variant={tierMeta.variant}>
-                      <span aria-hidden="true" className={`size-1.5 rounded-full ${tierMeta.dot}`} />
-                      {tierMeta.label}
-                    </Badge>
+                <div className="space-y-3 rounded-xl border bg-muted/40 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-sm">{parsedDossier.name}</span>
+                    <StatusBadge tier={parsedDossier.tier} lang={lang} />
                   </div>
 
-                  <div className="rounded-lg border bg-muted/40 p-3 text-xs">
-                    <div className="mb-1.5 font-mono text-[11px] text-muted-foreground">
-                      {lang === "zh"
-                        ? `公开规则引擎计算结果 · ${parsedDossier.auditorTool}`
-                        : `Public rule engine verdict · ${parsedDossier.auditorTool}`}
-                    </div>
-                    <ul className="space-y-1.5">
-                      {ruleReasons.map((r) => (
-                        <li key={r.rule} className="flex items-start gap-2">
-                          <Badge variant="outline" size="sm" className="mt-0.5 shrink-0 font-mono">
-                            {r.rule}
-                          </Badge>
-                          <span className="leading-relaxed text-foreground">{r[lang]}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {ruleReasons.map((r) => (
+                      <li key={r.rule}>{r[lang]}</li>
+                    ))}
+                  </ul>
 
                   {copiedJsonNotice && (
                     <Alert variant="info">
                       <AlertDescription className="text-xs">
                         {lang === "zh"
-                          ? "JSON 较长，已自动完整复制到剪贴板。在刚打开的 GitHub Issue JSON 框里直接粘贴即可。"
-                          : "Bundle exceeded URL limits and was copied to your clipboard. Paste it into the GitHub Issue JSON field."}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  {addedLocalNotice && (
-                    <Alert variant="success">
-                      <AlertDescription className="text-xs">
-                        {lang === "zh"
-                          ? "已暂存到当前页面榜单（仅存本地浏览器，可随时移除）。"
-                          : "Pinned to your local directory view (saved in browser localStorage)."}
+                          ? "已复制完整 JSON，打开 Issue 后直接粘贴。"
+                          : "Full JSON copied to clipboard — paste it into the Issue form."}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -304,11 +210,11 @@ export function SubmitTipDialog({
                       variant="outline"
                       onClick={() => {
                         onAddLocalCase(parsedDossier);
-                        setAddedLocalNotice(true);
+                        onClose();
                       }}
                     >
                       <PlusIcon />
-                      {lang === "zh" ? "暂存到本机榜单对比" : "Pin to local table"}
+                      {lang === "zh" ? "加入本机榜单" : "Pin locally"}
                     </Button>
                     <Button
                       size="sm"
@@ -318,47 +224,37 @@ export function SubmitTipDialog({
                         onPreviewDossier(parsedDossier);
                       }}
                     >
-                      <EyeIcon />
-                      {lang === "zh" ? "预览卷宗 & 导出 PNG" : "Inspect & PNG"}
+                      {lang === "zh" ? "预览" : "Inspect"}
                     </Button>
                     <Button size="sm" onClick={() => void handleSubmitJsonToGitHub()}>
-                      {lang === "zh" ? "固定证据到 GitHub Issue" : "Submit GitHub Issue"}
-                      <ExternalLinkIcon />
+                      {lang === "zh" ? "发 GitHub Issue" : "Open GitHub Issue"}
+                      <ArrowUpRightIcon />
                     </Button>
                   </div>
                 </div>
               )}
             </TabsPanel>
 
-            <TabsPanel value="contract" className="mt-4 space-y-4">
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {lang === "zh"
-                  ? "无需绑定我们的 Skill。只要你的自定义审计 Skill 或 AI Prompt 按下方 Schema v1.0.0 输出客观证据并在 auditor_tool 署名，GitHub Bot 就会自动验真 Commit 与源码文件、按公开标尺定级，并在审批后自动开 PR 入库。"
-                  : "You don't need to use oss-audit. Any custom Skill or prompt that outputs case-bundle.v1.json with your tool name in `auditor_tool` is automatically verified against GitHub commits & files and classified under the same open rules."}
-              </p>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs text-muted-foreground">
-                    Universal Output Contract (v1.0.0)
-                  </span>
-                  <Button size="xs" variant="outline" onClick={handleCopyContract}>
-                    {copiedContract ? <CheckIcon /> : <CopyIcon />}
-                    {copiedContract
-                      ? lang === "zh"
-                        ? "已复制"
-                        : "Copied"
-                      : lang === "zh"
-                        ? "复制契约"
-                        : "Copy contract"}
-                  </Button>
-                </div>
-                <pre className="max-h-56 overflow-auto rounded-xl border bg-sidebar p-3.5 font-mono text-xs text-foreground">
-                  <code>{UNIVERSAL_SKILL_CONTRACT}</code>
-                </pre>
+            <TabsPanel value="contract" className="mt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs text-muted-foreground">
+                  case-bundle.v1.json
+                </span>
+                <Button size="xs" variant="outline" onClick={handleCopyContract}>
+                  {copiedContract ? <CheckIcon /> : <CopyIcon />}
+                  {copiedContract
+                    ? lang === "zh"
+                      ? "已复制"
+                      : "Copied"
+                    : lang === "zh"
+                      ? "复制"
+                      : "Copy"}
+                </Button>
               </div>
-
-              <div className="flex flex-wrap gap-2">
+              <pre className="max-h-64 overflow-auto rounded-xl border bg-sidebar p-3.5 font-mono text-xs text-foreground">
+                <code>{UNIVERSAL_SKILL_CONTRACT}</code>
+              </pre>
+              <div className="flex gap-2">
                 <Button
                   size="sm"
                   render={
@@ -369,8 +265,8 @@ export function SubmitTipDialog({
                     />
                   }
                 >
-                  {lang === "zh" ? "打开案宗提交表单" : "Open Case Issue Form"}
-                  <ExternalLinkIcon />
+                  {lang === "zh" ? "提交 Issue" : "New Issue"}
+                  <ArrowUpRightIcon />
                 </Button>
                 <Button
                   size="sm"
@@ -383,68 +279,47 @@ export function SubmitTipDialog({
                     />
                   }
                 >
-                  <GitPullRequestIcon />
-                  {lang === "zh" ? "直接提 PR 到 cases/" : "Submit PR to cases/"}
+                  cases/ PR
+                  <ArrowUpRightIcon />
                 </Button>
               </div>
             </TabsPanel>
 
-            <TabsPanel value="manual" className="mt-4 space-y-3.5">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">
-                  {lang === "zh" ? "GitHub 仓库 (owner/repo)" : "GitHub repository (owner/repo)"}
-                </label>
+            <TabsPanel value="manual" className="mt-4 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Input
                   value={repoName}
                   onChange={(e) => setRepoName(e.target.value)}
                   placeholder="owner/repo"
+                  aria-label="Repository"
+                  className="font-mono"
+                />
+                <Input
+                  value={commitHash}
+                  onChange={(e) => setCommitHash(e.target.value)}
+                  placeholder="commit SHA"
+                  aria-label="Commit SHA"
                   className="font-mono"
                 />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Commit SHA</label>
-                  <Input
-                    value={commitHash}
-                    onChange={(e) => setCommitHash(e.target.value)}
-                    placeholder="70bde71191"
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">
-                    {lang === "zh" ? "审计 Skill / 工具" : "Auditor Skill / tool"}
-                  </label>
-                  <Input
-                    value={auditorTool}
-                    onChange={(e) => setAuditorTool(e.target.value)}
-                    placeholder="oss-audit v1.0.0"
-                    className="font-mono"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">
-                  {lang === "zh" ? "客观事实与源码链接" : "Verified facts & source permalinks"}
-                </label>
-                <Textarea
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  rows={4}
-                  placeholder={
-                    lang === "zh"
-                      ? "简述默认遥测、跨工具读取或文档承诺矛盾，附 GitHub 文件行号链接..."
-                      : "Summarize default telemetry, cross-tool reads, or doc mismatches with GitHub file:line links..."
-                  }
-                />
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
+              <Textarea
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                rows={4}
+                aria-label="Summary"
+                placeholder={
+                  lang === "zh"
+                    ? "源码行号与核实事实..."
+                    : "Verified facts & GitHub file:line links..."
+                }
+              />
+              <div className="flex gap-2">
                 <Button
                   size="sm"
                   render={<a href={manualIssue.url} target="_blank" rel="noreferrer" />}
                 >
-                  {lang === "zh" ? "打开预填 Issue 表单" : "Open pre-filled Issue"}
-                  <ExternalLinkIcon />
+                  {lang === "zh" ? "打开 Issue" : "Open Issue"}
+                  <ArrowUpRightIcon />
                 </Button>
                 <Button
                   size="sm"
@@ -461,8 +336,8 @@ export function SubmitTipDialog({
                     />
                   }
                 >
-                  {lang === "zh" ? "维护者整改销案" : "Maintainer fix appeal"}
-                  <ExternalLinkIcon />
+                  {lang === "zh" ? "整改申诉" : "Report fix"}
+                  <ArrowUpRightIcon />
                 </Button>
               </div>
             </TabsPanel>
