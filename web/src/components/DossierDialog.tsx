@@ -1,28 +1,41 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Check,
   Copy,
+  Cpu,
   Download,
   ExternalLink,
   FileCode2,
   GitCommitHorizontal,
+  MessageSquare,
+  Scale,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
   Terminal,
   X,
 } from "lucide-react";
-import type { CaseDossier, Lang } from "../types";
+import type { CaseDossier, Lang, SeverityProfile } from "../types";
 import { exportCaseCardPng } from "../utils/exportCard";
-import { buildGitHubIssueUrl } from "../utils/bundleParser";
+import {
+  buildCaseSubmissionIssueUrl,
+  buildRemediationAppealUrl,
+  evaluateTier,
+} from "../utils/bundleParser";
 
 interface DossierDialogProps {
   dossier: CaseDossier | null;
   lang: Lang;
+  profile?: SeverityProfile;
   onClose: () => void;
 }
 
-export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
+export function DossierDialog({
+  dossier,
+  lang,
+  profile = "standard",
+  onClose,
+}: DossierDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [copied, setCopied] = useState(false);
@@ -65,6 +78,24 @@ export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
     };
   }, []);
 
+  const evaluation = useMemo(() => {
+    if (!dossier) return null;
+    const res = evaluateTier(
+      {
+        riskLevel: dossier.riskLevel,
+        promiseVsReality: dossier.promiseVsReality,
+        defaultTelemetry: dossier.defaultTelemetry,
+        crossToolAccess: dossier.crossToolAccess,
+        doNotTrack: dossier.doNotTrack,
+      },
+      profile,
+    );
+    return {
+      tier: profile === "standard" ? dossier.tier : res.tier,
+      reasons: res.reasons,
+    };
+  }, [dossier, profile]);
+
   const handleClose = () => {
     if (dialogRef.current) {
       dialogRef.current.returnValue = "";
@@ -79,15 +110,31 @@ export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
     setTimeout(() => setCopied(false), 1800);
   };
 
+  const handleSubmitLocalBundle = async () => {
+    if (!dossier) return;
+    const { url, jsonWasTooLong } = buildCaseSubmissionIssueUrl({
+      repoName: dossier.name,
+      commitHash: dossier.commitHash,
+      auditorTool: dossier.auditorTool,
+      evidenceJson: dossier.rawBundleJson,
+      notes: dossier.oneLiner.en,
+    });
+    if (jsonWasTooLong && dossier.rawBundleJson) {
+      await navigator.clipboard.writeText(dossier.rawBundleJson).catch(() => {});
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const activeTier = evaluation?.tier ?? dossier?.tier ?? "cleared";
   const tierStyle =
-    dossier?.tier === "blacklist"
+    activeTier === "blacklist"
       ? {
           border: "border-red-500/40",
           badge: "border-red-500/70 bg-red-500/15 text-red-300",
           label: lang === "zh" ? "实锤黑榜 // BLACKLIST" : "BLACKLIST // VERIFIED",
           Icon: ShieldAlert,
         }
-      : dossier?.tier === "watchlist"
+      : activeTier === "watchlist"
         ? {
             border: "border-amber-500/40",
             badge: "border-amber-500/70 bg-amber-500/15 text-amber-300",
@@ -130,9 +177,14 @@ export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
                     {lang === "zh" ? "已部分整改" : "PARTIALLY PATCHED"}
                   </span>
                 )}
+                {dossier.sourceType === "community" && (
+                  <span className="rounded border border-indigo-500/50 bg-indigo-500/15 px-2 py-0.5 text-indigo-300">
+                    {lang === "zh" ? "社区 PR 归档" : "COMMUNITY ARCHIVED"}
+                  </span>
+                )}
                 {dossier.isCustomPreview && (
                   <span className="rounded border border-purple-500/50 bg-purple-500/15 px-2 py-0.5 text-purple-300">
-                    {lang === "zh" ? "本地 JSON 预览" : "LOCAL BUNDLE PREVIEW"}
+                    {lang === "zh" ? "本地沙盒预览" : "LOCAL SANDBOX"}
                   </span>
                 )}
               </div>
@@ -156,6 +208,13 @@ export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
                 <span>
                   {lang === "zh" ? "审计日期" : "Audited"}: {dossier.auditedDate}
                 </span>
+                {dossier.auditorTool && (
+                  <span className="inline-flex items-center gap-1 text-zinc-300">
+                    <Cpu className="h-3 w-3 text-zinc-500" />
+                    {dossier.auditorTool}
+                  </span>
+                )}
+                {dossier.submittedBy && <span>by @{dossier.submittedBy}</span>}
               </div>
             </div>
             <button
@@ -223,6 +282,30 @@ export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
                 </div>
               </div>
             </div>
+
+            {/* Public Rule Reasoning */}
+            {evaluation && (
+              <div className="rounded-lg border border-zinc-800/80 bg-[#0a0f18] p-3.5 text-xs">
+                <div className="mb-1.5 flex items-center justify-between gap-2 font-mono-code text-[11px] font-semibold uppercase text-zinc-400">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Scale className="h-3.5 w-3.5 text-zinc-400" />
+                    {lang === "zh"
+                      ? `公开判定依据 (${profile === "strict" ? "隐私洁癖标尺" : "标准标尺"})`
+                      : `Public Rule Reasoning (${profile === "strict" ? "Strict Profile" : "Standard Profile"})`}
+                  </span>
+                </div>
+                <ul className="space-y-1 text-zinc-300">
+                  {evaluation.reasons.map((r) => (
+                    <li key={r.rule} className="flex items-start gap-2">
+                      <span className="mt-0.5 shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 font-mono-code text-[10px] text-zinc-300">
+                        {r.rule}
+                      </span>
+                      <span>{r[lang]}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* One-Liner Verdict */}
             <div className="rounded-lg border border-zinc-800 bg-[#111622] p-4">
@@ -347,30 +430,54 @@ export function DossierDialog({ dossier, lang, onClose }: DossierDialogProps) {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/90 bg-[#090c12] px-5 py-3.5 sm:px-6">
             <button
               type="button"
-              onClick={() => exportCaseCardPng(dossier, lang)}
+              onClick={() => exportCaseCardPng({ ...dossier, tier: activeTier }, lang)}
               className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/90 px-3.5 py-2 text-xs font-semibold text-white transition hover:border-zinc-500 hover:bg-zinc-700"
             >
               <Download className="h-4 w-4" />
               {lang === "zh" ? "导出 X 证据图 (PNG)" : "Export Evidence Card (PNG)"}
             </button>
-            <div className="flex items-center gap-2">
-              <a
-                href={buildGitHubIssueUrl({
-                  repoName: dossier.name,
-                  repoUrl: dossier.repoUrl,
-                  commitHash: dossier.commitHash,
-                  summary:
-                    lang === "zh"
-                      ? `针对 ${dossier.caseId} (${dossier.name}) 补充新证据 / 提交整改销案申请：`
-                      : `Follow-up evidence or maintainer remediation update for ${dossier.caseId} (${dossier.name}):`,
-                })}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:text-white"
-              >
-                {lang === "zh" ? "补充证据 / 整改销案" : "Add Evidence / Claim Fix"}
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
+            <div className="flex flex-wrap items-center gap-2">
+              {dossier.evidenceIssueUrl && (
+                <a
+                  href={dossier.evidenceIssueUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-500/15 px-3 py-2 text-xs font-semibold text-indigo-200 transition hover:bg-indigo-500/25"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {lang === "zh"
+                    ? `原证据 Issue #${dossier.evidenceIssueNumber ?? ""}`
+                    : `Evidence Issue #${dossier.evidenceIssueNumber ?? ""}`}
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+              {dossier.isCustomPreview ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSubmitLocalBundle()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-500"
+                >
+                  {lang === "zh" ? "提交到 GitHub Issue 固证" : "Submit Evidence Issue"}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <a
+                  href={buildRemediationAppealUrl({
+                    caseId: dossier.caseId,
+                    repoName: dossier.name,
+                    explanation:
+                      lang === "zh"
+                        ? `针对 ${dossier.caseId} (${dossier.name}) 提交修复 Commit 或补充新证据：`
+                        : `Fix commit or follow-up evidence for ${dossier.caseId} (${dossier.name}):`,
+                  })}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+                >
+                  {lang === "zh" ? "补充证据 / 整改销案" : "Add Evidence / Claim Fix"}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
             </div>
           </div>
         </div>

@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-011",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "BloopAI/vibe-kanban",
+  "repoUrl": "https://github.com/BloopAI/vibe-kanban",
+  "stars": 28831,
+  "commitHash": "3f095f0186",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "NONE",
+  "doNotTrack": "NA",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "多 Agent 编排读各工具配置与 SSH 属核心功能，无外发",
+    "en": "Agent config & SSH workspace integration are core features; zero exfiltration"
+  },
+  "hardwareFingerprint": {
+    "zh": "仅本地残留 generate_user_id()（PostHog 已硬禁用，未外发）",
+    "en": "Residual local-only generate_user_id() (PostHog hard-disabled, never sent)"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "本地端后端、前端与发布脚本均已硬性禁用 PostHog 与 Sentry（构建检出密钥直接失败），实现零活跃遥测。",
+    "en": "Local backend, frontend, and release scripts unconditionally disable PostHog and Sentry (release script fails if keys appear), resulting in zero active telemetry."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "INFO",
+      "title": {
+        "zh": "本地端硬禁用 PostHog/Sentry，仅残留本地未外发硬件 ID 函数",
+        "en": "Local telemetry hard-disabled; residual local-only machine ID generator"
+      },
+      "summary": {
+        "zh": "AnalyticsConfig::new() 与 SentrySource::dsn() 无条件返回 None，release-local.sh 强制校验发布产物不含任何密钥。",
+        "en": "`AnalyticsConfig::new()` and `SentrySource::dsn()` unconditionally return `None`; `scripts/release-local.sh:256-267` blocks builds containing keys."
+      },
+      "filePath": "crates/services/src/services/analytics.rs",
+      "lineRange": "L23-L27",
+      "codeSnippet": "pub fn new() -> Option<Self> { None }",
+      "permalink": "https://github.com/BloopAI/vibe-kanban/blob/3f095f0186/crates/services/src/services/analytics.rs#L23-L27"
+    }
+  ],
+  "mitigationCommand": "# No action required — local telemetry is hard-disabled in code.",
+  "mitigationNote": {
+    "zh": "本地版已硬关闭所有遥测，无需额外配置。",
+    "en": "No extra steps needed; local builds hard-disable all telemetry."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

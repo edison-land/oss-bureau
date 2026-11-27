@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-003",
+  "tier": "watchlist",
+  "status": "VERIFIED",
+  "name": "google-gemini/gemini-cli",
+  "repoUrl": "https://github.com/google-gemini/gemini-cli",
+  "stars": 109181,
+  "commitHash": "60f8082b14",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "MEDIUM",
+  "defaultTelemetry": "OPT_OUT_HARD",
+  "doNotTrack": "NO",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无跨工具窥探（keytar 仅存储自身扩展密钥）",
+    "en": "None (keytar stores only Gemini CLI's own extension secrets)"
+  },
+  "hardwareFingerprint": {
+    "zh": "采集 GPU 型号 (si.graphics()) + 持久化 installation_id",
+    "en": "Collects GPU model via systeminformation + persistent installation_id"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "默认开启 Google Clearcut 上报 play.googleapis.com（含 GPU 型号与仓库名 SHA-256 哈希）；不认 DO_NOT_TRACK，设置弹窗隐藏开关 (showInDialog: false)，且 GEMINI_TELEMETRY_ENABLED=false 关不掉它。",
+    "en": "Default-on Google Clearcut telemetry to play.googleapis.com (GPU model + hashed GitHub repo name); ignores DO_NOT_TRACK, hides toggle from /settings dialog, and GEMINI_TELEMETRY_ENABLED=false does not disable it."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "MEDIUM",
+      "title": {
+        "zh": "Clearcut 默认开启、隐藏在设置弹窗外，且环境变量无法关闭",
+        "en": "Default-on Clearcut hidden from UI dialog with no env var opt-out"
+      },
+      "summary": {
+        "zh": "privacy.usageStatisticsEnabled 默认为 true 且 showInDialog: false；GEMINI_TELEMETRY_ENABLED=false 只控制独立 OTel，不影响 Clearcut 上报。",
+        "en": "`privacy.usageStatisticsEnabled` defaults to `true` with `showInDialog: false`; `GEMINI_TELEMETRY_ENABLED=false` only toggles OpenTelemetry, leaving Clearcut active."
+      },
+      "filePath": "packages/cli/src/config/settingsSchema.ts",
+      "lineRange": "L974-L982",
+      "codeSnippet": "usageStatisticsEnabled: { default: true, showInDialog: false }",
+      "permalink": "https://github.com/google-gemini/gemini-cli/blob/60f8082b14/packages/cli/src/config/settingsSchema.ts#L974-L982"
+    }
+  ],
+  "mitigationCommand": "# Edit ~/.gemini/settings.json:\n{\n  \"privacy\": {\n    \"usageStatisticsEnabled\": false\n  }\n}",
+  "mitigationNote": {
+    "zh": "必须手动编辑 ~/.gemini/settings.json 将 usageStatisticsEnabled 设为 false。",
+    "en": "Manually edit ~/.gemini/settings.json and set privacy.usageStatisticsEnabled to false."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

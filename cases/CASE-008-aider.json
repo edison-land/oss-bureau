@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-008",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "Aider-AI/aider",
+  "repoUrl": "https://github.com/Aider-AI/aider",
+  "stars": 50267,
+  "commitHash": "5dc9490bb3",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "OPT_IN",
+  "doNotTrack": "NO",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无（仅访问自身 ~/.aider）",
+    "en": "None (accesses only its own ~/.aider directory)"
+  },
+  "hardwareFingerprint": {
+    "zh": "无（随机 UUID4）",
+    "en": "None (random UUID4)"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "严格先问再开（Opt-in）且公开作者样本日志；小扣分是 10% 抽样弹窗默认选项为 [Yes]、同意后开异常自动捕获，且不认 DO_NOT_TRACK=1。",
+    "en": "Strictly opt-in with public sample analytics logs; minor caveats: 10% prompt defaults to [Yes], enables exception autocapture once opted in, and ignores DO_NOT_TRACK."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "LOW",
+      "title": {
+        "zh": "10% 随机弹窗默认选项为 [Yes]，且不支持 DO_NOT_TRACK",
+        "en": "10% opt-in prompt defaults to [Yes]; no DO_NOT_TRACK support"
+      },
+      "summary": {
+        "zh": "未同意前不会初始化 PostHog，但询问弹窗默认回车即同意，同意后开启 enable_exception_autocapture=True。",
+        "en": "PostHog stays off until confirmed, but `confirm_ask` defaults to `[Yes]` and opted-in clients enable `enable_exception_autocapture=True`."
+      },
+      "filePath": "aider/analytics.py",
+      "lineRange": "L85-L108",
+      "codeSnippet": "if not self.asked_opt_in: self.disable(False); return",
+      "permalink": "https://github.com/Aider-AI/aider/blob/5dc9490bb3/aider/analytics.py#L85-L108"
+    }
+  ],
+  "mitigationCommand": "aider --analytics-disable",
+  "mitigationNote": {
+    "zh": "运行一次 aider --analytics-disable 即可永久写入本地禁用标记。",
+    "en": "Run `aider --analytics-disable` once to permanently disable analytics."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

@@ -1,0 +1,37 @@
+{
+  "caseId": "CASE-014",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "farion1231/cc-switch",
+  "repoUrl": "https://github.com/farion1231/cc-switch",
+  "stars": 157402,
+  "commitHash": "754fed72d4",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "CLEAN",
+  "defaultTelemetry": "NONE",
+  "doNotTrack": "NA",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "纯本地多 CLI 切换器，跨目录读配置与钥匙串属显式核心功能，无外发",
+    "en": "Local-only multi-CLI config switcher; zero external exfiltration"
+  },
+  "hardwareFingerprint": {
+    "zh": "无",
+    "en": "None"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "零遥测、零硬件指纹，调用 Claude Code 查用量时甚至主动注入 DISABLE_TELEMETRY=1，堪称隐私模范。",
+    "en": "Zero telemetry and zero fingerprinting; even injects DISABLE_TELEMETRY=1 when invoking Claude Code for local usage checks."
+  },
+  "findings": [],
+  "mitigationCommand": "# Clean — zero telemetry; even disables Claude Code telemetry during usage checks.",
+  "mitigationNote": {
+    "zh": "纯本地零遥测工具，无需关闭操作。",
+    "en": "Clean local-only tool; no mitigation required."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

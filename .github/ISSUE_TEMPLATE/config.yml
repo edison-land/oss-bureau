@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🌐 OSS Bureau Live Case Board (红黑榜互动平台)
+    url: https://edison-land.github.io/oss-bureau/
+    about: Browse verified dossiers, test your own Skill's case-bundle.json, and export PNG evidence cards.

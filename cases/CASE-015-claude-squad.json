@@ -1,0 +1,37 @@
+{
+  "caseId": "CASE-015",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "smtg-ai/claude-squad",
+  "repoUrl": "https://github.com/smtg-ai/claude-squad",
+  "stars": 8871,
+  "commitHash": "070eb9387c",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "CLEAN",
+  "defaultTelemetry": "NONE",
+  "doNotTrack": "NA",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无（仅访问自身 ~/.claude-squad）",
+    "en": "None (touches only ~/.claude-squad)"
+  },
+  "hardwareFingerprint": {
+    "zh": "无",
+    "en": "None"
+  },
+  "promiseVsReality": "NO_CLAIM_FOUND",
+  "oneLiner": {
+    "zh": "极简纯离线 Go 终端编排器，零遥测 SDK、零 HTTP 网络请求、零硬件指纹、零跨工具读凭证。",
+    "en": "Minimal offline Go terminal orchestrator with zero telemetry SDKs, zero HTTP calls, zero fingerprinting, and zero cross-tool credential reads."
+  },
+  "findings": [],
+  "mitigationCommand": "# Clean — pure offline Go binary with zero network calls.",
+  "mitigationNote": {
+    "zh": "纯离线零联网工具，无需任何额外配置。",
+    "en": "Pure offline binary; no mitigation required."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

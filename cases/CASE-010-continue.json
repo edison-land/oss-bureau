@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-010",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "continuedev/continue",
+  "repoUrl": "https://github.com/continuedev/continue",
+  "stars": 36573,
+  "commitHash": "5522c6f44c",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "NONE",
+  "doNotTrack": "NA",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "读 ~/.claude/settings.json 仅做 Hooks 兼容，不外传遥测",
+    "en": "Reads ~/.claude/settings.json solely for Claude Code hooks compatibility"
+  },
+  "hardwareFingerprint": {
+    "zh": "使用 node-machine-id 生成 uniqueId 放入服务端请求头",
+    "en": "Uses node-machine-id for uniqueId header on Continue server requests"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "core/ 已清除 PostHog 与 Sentry，CLI 仅在用户自配 OTel 端点时才上报；小扣分是仍用 node-machine-id 生成 uniqueId。",
+    "en": "PostHog/Sentry removed from core; CLI OTel telemetry only activates when user configures an OTLP endpoint. Minor note: still uses node-machine-id for uniqueId."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "sensitive_access",
+      "severity": "LOW",
+      "title": {
+        "zh": "使用 node-machine-id 生成 uniqueId 带入请求头",
+        "en": "Uses node-machine-id for uniqueId request header"
+      },
+      "summary": {
+        "zh": "extensions/cli/src/util/uniqueId.ts 与 extensions/vscode/src/util/vscode.ts 调用 machineIdSync()。",
+        "en": "Calls `machineIdSync()` and attaches `uniqueId` in `core/continueServer/stubs/headers.ts:11`."
+      },
+      "filePath": "extensions/cli/src/telemetry/telemetryService.ts",
+      "lineRange": "L69-L84",
+      "codeSnippet": "const enabled = telemetryEnabled && hasOtelConfig; // off unless user sets OTEL_EXPORTER_OTLP_*",
+      "permalink": "https://github.com/continuedev/continue/blob/5522c6f44c/extensions/cli/src/telemetry/telemetryService.ts#L69-L84"
+    }
+  ],
+  "mitigationCommand": "export CONTINUE_CLI_ENABLE_TELEMETRY=\"0\"\nexport CONTINUE_METRICS_ENABLED=\"0\"",
+  "mitigationNote": {
+    "zh": "默认已不发送遥测，可选设置上述变量锁定关闭。",
+    "en": "Zero default telemetry; optionally set these env vars to lock it off."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

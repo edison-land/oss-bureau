@@ -8,3 +8,4 @@ reports/
 .tmp-audit/
 web/node_modules/
 web/dist/
+*.tsbuildinfo

@@ -1,0 +1,34 @@
+name: "✅ Remediation / Dispute Appeal (维护者整改销案 / 误报申诉)"
+description: "Submit a fix commit to update a project's status to Patched/Cleared, or dispute a factual finding with code evidence."
+title: "[Remediation] CASE-XXX owner/repo"
+labels: ["remediation-appeal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OSS Bureau credits maintainers promptly whenever telemetry dark patterns, cross-tool access, or doc mismatches are fixed.
+        Please provide the exact fix commit / PR link so the community can verify and update the dossier.
+
+  - type: input
+    id: case_id
+    attributes:
+      label: Existing Case ID & Repo / 原案宗号与仓库名
+      placeholder: "CASE-002 pingdotgg/t3code"
+    validations:
+      required: true
+
+  - type: input
+    id: fix_commit
+    attributes:
+      label: Fix Commit or PR URL / 修复 Commit 或 PR 链接
+      placeholder: "https://github.com/owner/repo/commit/..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: explanation
+    attributes:
+      label: What Changed / 整改说明或反证依据
+      description: "Explain which finding(s) were remediated or inaccurate, with exact file paths and line numbers."
+    validations:
+      required: true

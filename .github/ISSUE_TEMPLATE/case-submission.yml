@@ -1,0 +1,76 @@
+name: "🔍 Case Submission / 提交开源审计案宗"
+description: "Submit verifiable evidence (case-bundle.json) from oss-audit or your own Skill for public review and listing on the OSS Bureau board."
+title: "[Case] owner/repo"
+labels: ["case-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Evidence-First Rule**: All submissions are permanently archived in this public Issue.
+        An automated GitHub Action bot will validate your `case-bundle.json` against Schema `v1.0.0`, verify that the target repo / commit / file paths exist on GitHub, and compute the Red/Watch/Blacklist tier using our public rules.
+
+        支持使用 `oss-audit` 或**你自己的审计 Skill** 提交：只要输出符合 `case-bundle.v1.json` 规范的 JSON 即可自动验真与定级。
+
+  - type: input
+    id: target_repo
+    attributes:
+      label: Target Repository / 目标仓库
+      description: "GitHub owner/repo or full URL (e.g. owner/repo)"
+      placeholder: "owner/repo"
+    validations:
+      required: true
+
+  - type: input
+    id: commit_hash
+    attributes:
+      label: Audited Commit Hash / 审计 Commit
+      description: "Exact commit SHA audited (required for reproducible permalinks)"
+      placeholder: "e.g. 70bde71191"
+    validations:
+      required: true
+
+  - type: input
+    id: auditor_tool
+    attributes:
+      label: Auditor Skill or Tool / 审计所用 Skill 或工具
+      description: "Name and version of the skill/script that produced this report (e.g. oss-audit v1.0.0, my-custom-security-skill v0.2)"
+      placeholder: "oss-audit v1.0.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: case_bundle_json
+    attributes:
+      label: "case-bundle.json (v1.0.0) / 标准化证据包 JSON"
+      description: "Paste the complete JSON produced by oss-audit or any Skill following case-schema.json. Do not include personal secrets."
+      render: json
+      placeholder: |
+        {
+          "schema_version": "1.0.0",
+          "generated_at": "2026-11-26T00:00:00Z",
+          "auditor_tool": "oss-audit v1.0.0",
+          "target": { "name": "owner/repo", "repo_url": "https://github.com/owner/repo", "commit_hash": "abcdef1234", "audited_scope": "repo" },
+          "verdict": { "risk_level": "MEDIUM", "one_liner": "...", "promise_vs_reality": "CONSISTENT", "default_telemetry": "OPT_OUT_EASY", "cross_tool_access": false },
+          "findings": [],
+          "user_mitigations": [{ "action": "Disable telemetry", "command_or_config": "export DO_NOT_TRACK=1" }]
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Context / 补充说明（可选）
+      description: "Optional reproduction steps, screenshots, or comparison notes."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Fair-Play Confirmation / 客观取证确认
+      options:
+        - label: "All findings cite public source code paths and line numbers (no unverified speculation)."
+          required: true
+        - label: "No personal secrets, tokens, or private user data are included in this submission."
+          required: true

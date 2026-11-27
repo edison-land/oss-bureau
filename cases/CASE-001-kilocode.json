@@ -1,0 +1,74 @@
+{
+  "caseId": "CASE-001",
+  "tier": "blacklist",
+  "status": "VERIFIED",
+  "name": "Kilo-Org/kilocode",
+  "repoUrl": "https://github.com/Kilo-Org/kilocode",
+  "stars": 28137,
+  "commitHash": "70bde71191",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "HIGH",
+  "defaultTelemetry": "FORCED",
+  "doNotTrack": "NO",
+  "crossToolAccess": true,
+  "crossToolNote": {
+    "zh": "静默探查 ~/.conda/aau_token 并调 conda info --json 绕过脱敏提取客户端 Token 作为遥测关联键",
+    "en": "Silently probes ~/.conda/aau_token via `conda info --json --offline` to harvest Anaconda client token as a PostHog join key"
+  },
+  "hardwareFingerprint": {
+    "zh": "持久化 machineId + 绑定用户邮箱 (PostHog alias)",
+    "en": "Persistent machineId + aliased to user email in PostHog"
+  },
+  "promiseVsReality": "DIRECT_CONTRADICTION",
+  "oneLiner": {
+    "zh": "PRIVACY.md 声称本地模型不发第三方，实际默认开 PostHog（开 IP 定位 + 绑定邮箱）、JetBrains 端强制无法关闭、明文拒绝 DO_NOT_TRACK，还绕过脱敏偷抽 ~/.conda/aau_token。",
+    "en": "Contradicts PRIVACY.md with default-on PostHog (GeoIP enabled, email aliasing), forced telemetry in JetBrains, explicit DO_NOT_TRACK rejection, and silent ~/.conda/aau_token harvesting."
+  },
+  "promiseQuote": "You can run models locally to prevent data being sent to third-parties.",
+  "promiseSource": "PRIVACY.md:L16",
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "sensitive_access",
+      "severity": "HIGH",
+      "title": {
+        "zh": "跨工具绕过脱敏抽取 ~/.conda/aau_token 作为 PostHog 关联键",
+        "en": "Harvests Anaconda ~/.conda/aau_token via JSON bypass as telemetry join key"
+      },
+      "summary": {
+        "zh": "conda.ts 专门检查 ~/.conda/aau_token，并在注释中明写“人类可读输出会脱敏，JSON 才保留真实 User-Agent”，通过 conda info --json --offline 提取 22 位客户端 Token 附带进 PostHog 事件。",
+        "en": "Checks ~/.conda/aau_token and spawns `conda info --json --offline` specifically because JSON retains the unredacted Anaconda user-agent token, attaching it to PostHog as `aauClientToken`."
+      },
+      "filePath": "packages/kilo-telemetry/src/conda.ts",
+      "lineRange": "L5-L48",
+      "codeSnippet": "// JSON retains the actual user agent; the human-readable `conda info` output redacts it\nconst token = match(/c\\/([A-Za-z0-9_-]{22})/); // attached as aauClientToken join key",
+      "permalink": "https://github.com/Kilo-Org/kilocode/blob/70bde71191/packages/kilo-telemetry/src/conda.ts#L5-L48"
+    },
+    {
+      "id": "F-002",
+      "category": "telemetry",
+      "severity": "HIGH",
+      "title": {
+        "zh": "JetBrains 插件强制开启遥测，且 CLI 明文拒绝 DO_NOT_TRACK",
+        "en": "Forced telemetry in JetBrains plugin & explicit DO_NOT_TRACK rejection"
+      },
+      "summary": {
+        "zh": "官方文档承认 JetBrains 插件始终开启遥测、IDE 隐私开关无效；PostHog 客户端开启 disableGeoip: false（IP 定位）且调用 Client.alias(email, previousId) 关联匿名 ID 与邮箱。",
+        "en": "Docs confirm JetBrains telemetry is always on and cannot be disabled; PostHog sets `disableGeoip: false`, aliases machineId to user email, and docs explicitly state DO_NOT_TRACK is unsupported."
+      },
+      "filePath": "packages/kilo-docs/pages/getting-started/settings/product-telemetry.md",
+      "lineRange": "L19, L73, L91",
+      "codeSnippet": "Product telemetry is currently always on in the JetBrains plugin.\nDO_NOT_TRACK is not a supported opt-out for this CLI.",
+      "permalink": "https://github.com/Kilo-Org/kilocode/blob/70bde71191/packages/kilo-docs/pages/getting-started/settings/product-telemetry.md#L19"
+    }
+  ],
+  "mitigationCommand": "export KILO_TELEMETRY_LEVEL=\"off\"\n# CLI: set \"experimental\": { \"openTelemetry\": false } in ~/.config/kilo/kilo.jsonc\n# JetBrains: no built-in opt-out; block us.i.posthog.com at DNS/firewall",
+  "mitigationNote": {
+    "zh": "CLI 可通过环境变量关闭；JetBrains 插件目前无内置开关，需在防火墙或 hosts 拦截 us.i.posthog.com。",
+    "en": "CLI supports KILO_TELEMETRY_LEVEL=off; JetBrains has no opt-out toggle and requires blocking us.i.posthog.com."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

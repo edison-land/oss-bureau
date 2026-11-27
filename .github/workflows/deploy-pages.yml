@@ -5,11 +5,16 @@ on:
     branches: ["main"]
     paths:
       - "web/**"
+      - "cases/**"
+      - "scripts/bureau_bot.py"
       - ".github/workflows/deploy-pages.yml"
+  issues:
+    types: [opened, edited, closed, labeled]
   workflow_dispatch:
 
 permissions:
   contents: read
+  issues: read
   pages: write
   id-token: write
 
@@ -19,9 +24,24 @@ concurrency:
 
 jobs:
   build:
+    if: >
+      github.event_name != 'issues' ||
+      contains(github.event.issue.labels.*.name, 'case-submission') ||
+      contains(github.event.issue.labels.*.name, 'case-tip')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate Case Registry & Sync Community Issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/bureau_bot.py inspect-pr --all --no-network
+          python3 scripts/bureau_bot.py sync-issues --repo "${{ github.repository }}" --out web/src/data/communityIssues.json
       - uses: pnpm/action-setup@v4
         with:
           version: 9

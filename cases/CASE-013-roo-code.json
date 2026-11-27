@@ -1,0 +1,37 @@
+{
+  "caseId": "CASE-013",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "RooCodeInc/Roo-Code",
+  "repoUrl": "https://github.com/RooCodeInc/Roo-Code",
+  "stars": 24237,
+  "commitHash": "b867ec9145",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "CLEAN",
+  "defaultTelemetry": "NONE",
+  "doNotTrack": "NA",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无（仅 Bedrock Provider 读 ~/.aws 及工作区规则发现）",
+    "en": "None (only ~/.aws for explicit Bedrock provider and workspace rules)"
+  },
+  "hardwareFingerprint": {
+    "zh": "无（运行时零指纹）",
+    "en": "None in extension runtime"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "当前 main 已彻底移除 PostHog / Sentry 遥测包与运行时上报代码，零活跃遥测、零跨工具窥探。",
+    "en": "Zero active telemetry or analytics SDKs in runtime codebase at current main; no undisclosed cross-tool access."
+  },
+  "findings": [],
+  "mitigationCommand": "# Clean — no active telemetry found in runtime code.",
+  "mitigationNote": {
+    "zh": "当前版本运行时无活跃遥测，无需额外操作。",
+    "en": "No action needed; runtime code contains zero active telemetry."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

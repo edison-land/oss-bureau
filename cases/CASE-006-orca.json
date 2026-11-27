@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-006",
+  "tier": "watchlist",
+  "status": "VERIFIED",
+  "name": "stablyai/orca",
+  "repoUrl": "https://github.com/stablyai/orca",
+  "stars": 139961,
+  "commitHash": "88a17eba5f",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "OPT_OUT_EASY",
+  "doNotTrack": "YES",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "多 Agent 账号/Cookie 导入属核心功能，未传入遥测",
+    "en": "Agent account & browser cookie import are explicit core features; never sent to telemetry"
+  },
+  "hardwareFingerprint": {
+    "zh": "无（使用 crypto.randomUUID() 随机安装 ID）",
+    "en": "None (random UUIDv4 via crypto.randomUUID())"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "官方发行版默认开 PostHog（源码自编译默认关闭），主动禁用 GeoIP 与 person profile、随机 UUIDv4、严格白名单字段，认 DO_NOT_TRACK=1 且有 UI 开关。",
+    "en": "Official builds ship opt-out PostHog (source builds default off) with GeoIP & person profiles disabled, random UUIDv4, strict schema allowlist, UI toggle, and DO_NOT_TRACK=1 support."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "LOW",
+      "title": {
+        "zh": "官方发行版默认开启 PostHog，但隐私防护做得很克制",
+        "en": "Default-on PostHog in official releases with strong privacy guardrails"
+      },
+      "summary": {
+        "zh": "CI 注入写密钥的官方版默认 optedIn: true，但设置了 disableGeoip: true、$process_person_profile: false，并响应 DO_NOT_TRACK=1 和 ORCA_TELEMETRY_DISABLED=1。",
+        "en": "Official CI builds default to `optedIn: true`, with `disableGeoip: true`, `$process_person_profile: false`, UI toggle, and `DO_NOT_TRACK=1` / `ORCA_TELEMETRY_DISABLED=1`."
+      },
+      "filePath": "src/main/telemetry/posthog-transport.ts",
+      "lineRange": "L81-L91",
+      "codeSnippet": "disableGeoip: true, credentials: 'omit' // + $process_person_profile: false",
+      "permalink": "https://github.com/stablyai/orca/blob/88a17eba5f/src/main/telemetry/posthog-transport.ts#L81-L91"
+    }
+  ],
+  "mitigationCommand": "export DO_NOT_TRACK=\"1\"\nexport ORCA_TELEMETRY_DISABLED=\"1\"",
+  "mitigationNote": {
+    "zh": "可在 Settings → Privacy 关闭“Share anonymous usage data”，或设 DO_NOT_TRACK=1。",
+    "en": "Toggle off in Settings → Privacy or set DO_NOT_TRACK=1 / ORCA_TELEMETRY_DISABLED=1."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

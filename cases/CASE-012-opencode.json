@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-012",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "anomalyco/opencode",
+  "repoUrl": "https://github.com/anomalyco/opencode",
+  "stars": 229345,
+  "commitHash": "d580636cd4",
+  "branch": "dev",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "NONE",
+  "doNotTrack": "NA",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无遥测窥探；注意内置浏览器插件含用户触发的 Chrome/Safari Cookie 解密导入高权限代码",
+    "en": "No telemetry snooping; note built-in browser plugin includes user-triggered Chrome/Safari cookie decryption via Keychain/DPAPI"
+  },
+  "hardwareFingerprint": {
+    "zh": "无",
+    "en": "None"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "默认零遥测，Sentry 仅在崩溃页用户主动点击 Report 才发；唯一安全提示是内置浏览器含高权限 Cookie 导入功能（需用户主动授权）。",
+    "en": "Zero default telemetry; Sentry only fires when user clicks Report on crash page. High-privilege note: embedded browser supports user-triggered Chrome/Safari cookie import."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "sensitive_access",
+      "severity": "INFO",
+      "title": {
+        "zh": "内置浏览器插件含 Keychain/DPAPI 解密导入浏览器 Cookie 能力",
+        "en": "Built-in browser plugin can decrypt Chrome/Safari cookies on user request"
+      },
+      "summary": {
+        "zh": "sources.ts:464-515 通过 macOS security find-generic-password / Windows DPAPI 导入登录态到内置浏览器，需用户明确授权，非静默偷取。",
+        "en": "`sources.ts:464-515` uses macOS Keychain / Windows DPAPI to import browser cookies when triggered by the user; never sent to telemetry."
+      },
+      "filePath": "packages/gui-plugins/src/browser/profile/sources.ts",
+      "lineRange": "L464-L515",
+      "codeSnippet": "const password = await run(\"/usr/bin/security\", [\"find-generic-password\", \"-w\", ...])",
+      "permalink": "https://github.com/anomalyco/opencode/blob/d580636cd4/packages/gui-plugins/src/browser/profile/sources.ts#L464-L515"
+    }
+  ],
+  "mitigationCommand": "# No telemetry opt-out needed.\n# Decline OS Keychain prompts unless intentionally importing browser cookies.",
+  "mitigationNote": {
+    "zh": "无需关遥测；如不使用内置浏览器导入登录态，遇到系统钥匙串弹窗拒绝即可。",
+    "en": "Zero default telemetry; simply decline Keychain prompts unless using browser cookie import."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

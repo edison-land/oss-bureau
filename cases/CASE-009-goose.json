@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-009",
+  "tier": "cleared",
+  "status": "CLEARED",
+  "name": "aaif-goose/goose",
+  "repoUrl": "https://github.com/aaif-goose/goose",
+  "stars": 57034,
+  "commitHash": "d1438fde28",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "OPT_IN",
+  "doNotTrack": "NO",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无遥测越权（读取 ~/.claude 与 ~/.codex 仅用于会话导入与技能发现）",
+    "en": "Core only (reads ~/.claude & ~/.codex only for session import & skill discovery)"
+  },
+  "hardwareFingerprint": {
+    "zh": "无（随机 UUIDv4）",
+    "en": "None (random UUIDv4)"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "Rust 后端严格默认关闭 PostHog（unwrap_or(false)），无硬件指纹、无跨工具窥探；小扣分是桌面首次引导复选框默认打勾且不认 DO_NOT_TRACK。",
+    "en": "Rust backend strictly enforces opt-in PostHog (`unwrap_or(false)`) with random UUIDv4 and no cross-tool snooping; minor note: desktop onboarding checkbox is pre-checked."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "INFO",
+      "title": {
+        "zh": "后端默认关闭，桌面首次引导复选框预勾选",
+        "en": "Backend strictly opt-in; desktop onboarding checkbox pre-checked"
+      },
+      "summary": {
+        "zh": "crates/goose/src/posthog.rs 默认返回 false；桌面端 OnboardingSuccess.tsx:51 默认 useState(true)。",
+        "en": "`is_telemetry_enabled()` defaults to `false` in Rust; desktop onboarding initializes checkbox with `useState(true)`."
+      },
+      "filePath": "crates/goose/src/posthog.rs",
+      "lineRange": "L50-L52",
+      "codeSnippet": "pub fn is_telemetry_enabled() -> bool { get_telemetry_choice().unwrap_or(false) }",
+      "permalink": "https://github.com/aaif-goose/goose/blob/d1438fde28/crates/goose/src/posthog.rs#L50-L52"
+    }
+  ],
+  "mitigationCommand": "export GOOSE_TELEMETRY_OFF=\"1\"",
+  "mitigationNote": {
+    "zh": "设置 GOOSE_TELEMETRY_OFF=1 即可确保全局禁用。",
+    "en": "Set GOOSE_TELEMETRY_OFF=1 or uncheck telemetry during desktop onboarding."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

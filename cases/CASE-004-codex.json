@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-004",
+  "tier": "watchlist",
+  "status": "VERIFIED",
+  "name": "openai/codex",
+  "repoUrl": "https://github.com/openai/codex",
+  "stars": 136557,
+  "commitHash": "dd6d2c3d66",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "MEDIUM",
+  "defaultTelemetry": "OPT_OUT_EASY",
+  "doNotTrack": "NO",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无跨工具窥探（.ssh/.aws 命中仅为沙盒防写保护规则）",
+    "en": "None (.ssh/.aws references are sandbox write-protection rules only)"
+  },
+  "hardwareFingerprint": {
+    "zh": "无硬件指纹（使用 codex_home 下持久化 installation_id）",
+    "en": "None (persistent installation_id under codex_home)"
+  },
+  "promiseVsReality": "NO_CLAIM_FOUND",
+  "oneLiner": {
+    "zh": "默认开启第一方事件分析与 Statsig 指标上报，不支持 DO_NOT_TRACK=1；但可通过 config.toml 干净关闭，无跨工具窥探与硬件指纹。",
+    "en": "Ships default-on first-party analytics and Statsig metrics without DO_NOT_TRACK support; cleanly disabled via config.toml, with no cross-tool snooping."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "MEDIUM",
+      "title": {
+        "zh": "默认开启第一方分析与 Statsig 指标，不识别 DO_NOT_TRACK",
+        "en": "Default-on first-party analytics + Statsig metrics; ignores DO_NOT_TRACK"
+      },
+      "summary": {
+        "zh": "analytics.enabled 默认非 false 即开启，向 /codex/analytics-events/events 上报会话/工具/token 指标，并默认启用 Statsig 指标导出。",
+        "en": "Enabled whenever `analytics_enabled != Some(false)`, posting session/tool/token events and defaulting OTel metrics exporter to Statsig."
+      },
+      "filePath": "codex-rs/analytics/src/client.rs",
+      "lineRange": "L187, L434",
+      "codeSnippet": "// POST {chatgpt_base_url}/codex/analytics-events/events\n// OtelConfig::default().metrics_exporter = OtelExporterKind::Statsig",
+      "permalink": "https://github.com/openai/codex/blob/dd6d2c3d66/codex-rs/analytics/src/client.rs#L187"
+    }
+  ],
+  "mitigationCommand": "# Add to ~/.codex/config.toml:\n[analytics]\nenabled = false\n\n[otel]\nmetrics_exporter = \"none\"",
+  "mitigationNote": {
+    "zh": "在 ~/.codex/config.toml 中写入 [analytics] enabled = false 即可一并关闭第一方分析与 Statsig 指标。",
+    "en": "Set `[analytics] enabled = false` in ~/.codex/config.toml to disable both analytics and Statsig metrics."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

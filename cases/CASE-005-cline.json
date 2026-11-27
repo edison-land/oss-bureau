@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-005",
+  "tier": "watchlist",
+  "status": "VERIFIED",
+  "name": "cline/cline",
+  "repoUrl": "https://github.com/cline/cline",
+  "stars": 71914,
+  "commitHash": "cbc7d1419a",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "MEDIUM",
+  "defaultTelemetry": "OPT_OUT_EASY",
+  "doNotTrack": "YES",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "无遥测越权（.claude/.codex 仅用于用户主动导入会话与技能发现）",
+    "en": "None for telemetry (.claude/.codex used only for explicit session import & skill discovery)"
+  },
+  "hardwareFingerprint": {
+    "zh": "使用 node-machine-id 硬件指纹作为 distinctId",
+    "en": "Uses node-machine-id hardware fingerprint as distinctId"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "默认开 PostHog + 硬件指纹 node-machine-id，但文档坦白披露且支持 DO_NOT_TRACK=1；注意关闭遥测后仍会带硬件指纹调 data.cline.bot/decide 拉 Feature Flags。",
+    "en": "Default-on PostHog with node-machine-id, transparently documented and honoring DO_NOT_TRACK=1; still contacts data.cline.bot/decide with distinctId for feature flags when telemetry is off."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "MEDIUM",
+      "title": {
+        "zh": "关闭遥测后仍带硬件指纹请求 /decide 拉取 Feature Flags",
+        "en": "Feature flag /decide requests still send machine distinctId when telemetry is off"
+      },
+      "summary": {
+        "zh": "apps/vscode-rollout/src/rollout.ts 使用 node-machine-id 向 data.cline.bot/decide?v=3 拉取灰度开关，不受遥测关闭控制（文档 L62 已如实说明）。",
+        "en": "`rollout.ts` POSTs `{ api_key, distinct_id }` derived from `node-machine-id` to `data.cline.bot/decide?v=3` even when telemetry is disabled (disclosed in telemetry.mdx:L62)."
+      },
+      "filePath": "apps/vscode-rollout/src/rollout.ts",
+      "lineRange": "L88-L106",
+      "codeSnippet": "const response = await postJson(`${POSTHOG_HOST}/decide?v=3`, {\n  api_key: POSTHOG_API_KEY,\n  distinct_id: distinctId,\n});",
+      "permalink": "https://github.com/cline/cline/blob/cbc7d1419a/apps/vscode-rollout/src/rollout.ts#L88-L106"
+    }
+  ],
+  "mitigationCommand": "export DO_NOT_TRACK=\"1\"\nexport CLINE_TELEMETRY_DISABLED=\"1\"",
+  "mitigationNote": {
+    "zh": "设置 DO_NOT_TRACK=1 或在 Cline 设置中关闭“Allow error and usage reporting”。",
+    "en": "Export DO_NOT_TRACK=1 or CLINE_TELEMETRY_DISABLED=1, or toggle off in Cline Settings → General."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

@@ -1,0 +1,74 @@
+{
+  "caseId": "CASE-002",
+  "tier": "blacklist",
+  "status": "PARTIALLY_PATCHED",
+  "name": "pingdotgg/t3code",
+  "repoUrl": "https://github.com/pingdotgg/t3code",
+  "stars": 80541,
+  "commitHash": "694c1be67f",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "HIGH",
+  "defaultTelemetry": "OPT_OUT_HARD",
+  "doNotTrack": "NEW",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "历史实锤：11/24 前静默解析 Codex JWT id_token 与 Claude oauthAccount.accountUuid 做跨设备关联（提交 84e4264bb3 已删除）",
+    "en": "Historical: parsed Codex JWT id_token & Claude oauthAccount.accountUuid for cross-device tracking (removed in commit 84e4264bb3 on 2026-11-24)"
+  },
+  "hardwareFingerprint": {
+    "zh": "随机安装 ID 哈希（+ 登录时含 T3 Connect 账号哈希）",
+    "en": "Hashed random install ID (+ hashed T3 Connect account when signed in)"
+  },
+  "promiseVsReality": "PARTIAL_MISMATCH",
+  "oneLiner": {
+    "zh": "曾静默读取 Codex JWT 与 Claude 账号 ID 做跨设备遥测（11/24 已连夜移除）；截至 11/26 仍默认开启遥测，DO_NOT_TRACK 刚于 11/25 补齐，桌面/Web 端依然未合并 Settings 关闭开关。",
+    "en": "Historically hashed Codex JWT id_token & Claude account IDs for telemetry (removed 2026-11-24); default-on telemetry remains active with DO_NOT_TRACK added 2026-11-25 and no merged desktop Settings toggle yet."
+  },
+  "promiseQuote": "No telemetry. Unless you opt in. Full stop. (historical landing page before Nov 24 controversy)",
+  "promiseSource": "Historical site / docs/user/telemetry.md",
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "sensitive_access",
+      "severity": "HIGH",
+      "title": {
+        "zh": "[11/24 已移除] 遥测曾解析 Codex JWT id_token 与 Claude accountUuid",
+        "en": "[Remediated 2026-11-24] Telemetry previously parsed Codex JWT id_token & Claude accountUuid"
+      },
+      "summary": {
+        "zh": "提交 84e4264bb3 (PR #42299) 删除的 Identify.ts 证实：此前遥测会读取外部工具登录文件，解码 OpenAI JWT user_id 与 Claude oauthAccount.accountUuid，哈希后发往 ingest.t3.codes / PostHog。",
+        "en": "Commit 84e4264bb3 (PR #42299) removed CodexAuthJsonSchema & ClaudeJsonSchema from Identify.ts, confirming provider account IDs were previously hashed and sent to ingest.t3.codes / PostHog."
+      },
+      "filePath": "apps/server/src/telemetry/Identify.ts",
+      "lineRange": "commit 84e4264bb3",
+      "codeSnippet": "fix(server): analytics no longer reads or sends Codex and Claude account IDs (#42299)\n- const CodexAuthJsonSchema = Schema.Struct({ tokens: ... id_token ... })\n- const ClaudeJsonSchema = Schema.Struct({ userID: ..., oauthAccount: { accountUuid } })",
+      "permalink": "https://github.com/pingdotgg/t3code/commit/84e4264bb3"
+    },
+    {
+      "id": "F-002",
+      "category": "telemetry",
+      "severity": "MEDIUM",
+      "title": {
+        "zh": "默认开启遥测且桌面/Web 端至今无已合并的 Settings 关闭开关",
+        "en": "Default-on telemetry with no merged desktop/web Settings toggle"
+      },
+      "summary": {
+        "zh": "10/29 提的关闭开关 PR #27077 于 11/17 未合并关闭；11/25 新 PR #42625 仍在 OPEN。桌面端用户目前仍需手动配置环境变量并重启。",
+        "en": "Earlier Settings toggle PR #27077 was closed unmerged on Nov 17; new PR #42625 remains open. Desktop users must still manually export env vars and restart."
+      },
+      "filePath": "docs/user/telemetry.md",
+      "lineRange": "L9-L16",
+      "codeSnippet": "Desktop app: Export T3CODE_TELEMETRY_ENABLED=false or DO_NOT_TRACK=1 in your shell profile and restart.",
+      "permalink": "https://github.com/pingdotgg/t3code/blob/694c1be67f/docs/user/telemetry.md#L9-L16"
+    }
+  ],
+  "mitigationCommand": "export DO_NOT_TRACK=\"1\"\nexport T3CODE_TELEMETRY_ENABLED=\"false\"\nexport T3CODE_OTEL_SDK_DISABLED=\"true\"",
+  "mitigationNote": {
+    "zh": "升级至 11/25 后的版本，并将上述环境变量写入 ~/.zshrc 后完全重启桌面端。",
+    "en": "Upgrade past 2026-11-25, add these exports to your shell profile, and fully restart the desktop app."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

@@ -1,0 +1,55 @@
+{
+  "caseId": "CASE-007",
+  "tier": "watchlist",
+  "status": "VERIFIED",
+  "name": "charmbracelet/crush",
+  "repoUrl": "https://github.com/charmbracelet/crush",
+  "stars": 29213,
+  "commitHash": "7591838397",
+  "branch": "main",
+  "auditedDate": "2026-11-26",
+  "riskLevel": "LOW",
+  "defaultTelemetry": "OPT_OUT_EASY",
+  "doNotTrack": "YES",
+  "crossToolAccess": false,
+  "crossToolNote": {
+    "zh": "仅 os.Stat 检查 ~/.aws 是否存在及读取 skills 目录",
+    "en": "Minimal (os.Stat existence check on ~/.aws and skill directory discovery only)"
+  },
+  "hardwareFingerprint": {
+    "zh": "有（machineid.ProtectedID 或 MAC 地址 HMAC-SHA256）",
+    "en": "Yes (machineid.ProtectedID with MAC address HMAC-SHA256 fallback)"
+  },
+  "promiseVsReality": "CONSISTENT",
+  "oneLiner": {
+    "zh": "默认向 data.charm.land（PostHog）上报匿名用量与异常字符串，使用硬件 machineid 哈希；README 坦诚公开源码链接，并支持 DO_NOT_TRACK=1 与 CRUSH_DISABLE_METRICS=1。",
+    "en": "Transparently disclosed default-on PostHog telemetry to data.charm.land using hashed hardware machineid, honoring DO_NOT_TRACK=1 and CRUSH_DISABLE_METRICS=1."
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "category": "telemetry",
+      "severity": "LOW",
+      "title": {
+        "zh": "默认开启 PostHog 并使用 machineid / MAC 哈希指纹",
+        "en": "Default-on PostHog using machineid / MAC hash identifier"
+      },
+      "summary": {
+        "zh": "internal/event/identifier.go 使用 machineid.ProtectedID(\"charm\") 生成 distinctId；支持 CRUSH_DISABLE_METRICS=1、DO_NOT_TRACK=1 及配置文件关闭。",
+        "en": "Derives PostHog distinctId from `machineid.ProtectedID(\"charm\")` (MAC fallback); cleanly disabled via `DO_NOT_TRACK=1` or `CRUSH_DISABLE_METRICS=1`."
+      },
+      "filePath": "internal/event/identifier.go",
+      "lineRange": "L20-L28",
+      "codeSnippet": "id, err := machineid.ProtectedID(\"charm\")",
+      "permalink": "https://github.com/charmbracelet/crush/blob/7591838397/internal/event/identifier.go#L20-L28"
+    }
+  ],
+  "mitigationCommand": "export DO_NOT_TRACK=\"1\"\nexport CRUSH_DISABLE_METRICS=\"1\"",
+  "mitigationNote": {
+    "zh": "配置 DO_NOT_TRACK=1 或 CRUSH_DISABLE_METRICS=1，或在配置中设 disable_metrics: true。",
+    "en": "Export DO_NOT_TRACK=1 or CRUSH_DISABLE_METRICS=1, or set `disable_metrics: true` in config."
+  },
+  "auditorTool": "oss-audit v1.0.0",
+  "submittedBy": "edison-land",
+  "sourceType": "official"
+}

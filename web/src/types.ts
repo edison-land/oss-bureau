@@ -2,6 +2,8 @@ export type Lang = "zh" | "en";
 
 export type Tier = "blacklist" | "watchlist" | "cleared";
 
+export type SeverityProfile = "standard" | "strict";
+
 export type RiskLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "CLEAN";
 
 export type DefaultTelemetry =
@@ -21,6 +23,13 @@ export type PromiseVerdict =
 export type CaseStatus = "VERIFIED" | "PARTIALLY_PATCHED" | "CLEARED" | "PREVIEW";
 
 export interface LocalizedText {
+  zh: string;
+  en: string;
+}
+
+export interface TierRuleHit {
+  rule: string;
+  tier: Tier;
   zh: string;
   en: string;
 }
@@ -62,6 +71,25 @@ export interface CaseDossier {
   mitigationCommand: string;
   mitigationNote: LocalizedText;
   isCustomPreview?: boolean;
+  auditorTool?: string;
+  submittedBy?: string;
+  evidenceIssueNumber?: number;
+  evidenceIssueUrl?: string;
+  sourceType?: "official" | "community" | "local";
+  rawBundleJson?: string;
+}
+
+export interface BureauMeta {
+  case_id?: string;
+  tier?: Tier;
+  status?: CaseStatus;
+  stars?: number | null;
+  do_not_track?: "YES" | "NO" | "NA" | "NEW";
+  submitted_by?: string;
+  evidence_issue_number?: number;
+  evidence_issue_url?: string;
+  source_type?: "official" | "community";
+  archived_at?: string;
 }
 
 export interface RawCaseBundleV1 {
@@ -112,4 +140,31 @@ export interface RawCaseBundleV1 {
     scope?: string | null;
   }>;
   disclaimer?: string;
+  bureau_meta?: BureauMeta;
+}
+
+export interface CommunityIssueRecord {
+  number: number;
+  title: string;
+  htmlUrl: string;
+  author: string;
+  authorAvatar?: string;
+  createdAt: string;
+  updatedAt: string;
+  comments: number;
+  thumbsUp: number;
+  thumbsDown: number;
+  labels: string[];
+  tier: Tier | null;
+  evidenceStatus: "verified" | "needs_fix" | "valid_json" | "manual_tip";
+  targetRepo: string;
+  auditorTool?: string | null;
+  summary: string;
+  bundle?: RawCaseBundleV1 | null;
+}
+
+export interface CommunityIssuesSnapshot {
+  syncedAt: string;
+  repo: string;
+  issues: CommunityIssueRecord[];
 }
