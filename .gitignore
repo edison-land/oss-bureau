@@ -6,3 +6,5 @@ __pycache__/
 reports/
 *.case-bundle.json
 .tmp-audit/
+web/node_modules/
+web/dist/
